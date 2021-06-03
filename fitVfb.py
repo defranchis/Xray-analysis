@@ -16,8 +16,6 @@ samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR'
            '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
            '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
 
-# samples = ['3007_UL','1012_UL']
-
 GCD_exclude = ['1008_LR','1113_LR','1105_LR']
 MOS_exclude = ['1012_UL']
 
@@ -287,6 +285,10 @@ def fitVfb(sample,structure,dose,freq=False):
     if '3001_UL' in sample and dose == 10 and structure == 'MOS2000':
         low_plat = high_ramp*1.05
         high_plat = high_ramp*1.1
+    if sample == '1010_UL' and (dose == 5 or dose == 10) and structure == 'MOS2000':
+        low_plat = high_ramp*1.05
+        high_plat = high_ramp*1.1
+ 
     if sample == '23_SE_GCD' and dose == 70:
         high_plat = max(list(tge.GetX()))
         low_plat = high_plat *.95
@@ -369,7 +371,7 @@ def processMOS(sample,structure,Cox,freq=False):
     gNox.SetName('gNox')
 
     for dose in doses:
-        if sample == '3009_LR' and structure == 'MOShalf' and dose == 1 and freq == False:
+        if sample == '3009_LR' and structure == 'MOShalf' and dose == 1:
             continue
         if sample == '3101_LR' and dose == 100:
             continue
