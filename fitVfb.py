@@ -6,41 +6,122 @@ import constants as cnst
 
 gROOT.SetBatch(True)
 
+indir = '/eos/user/h/hgsensor/HGCAL_test_results/Data/'
 outdir = 'allplots'
-if not os.path.exists(outdir):                                            
-    os.makedirs(outdir) 
-
 outfiles = 'Vfb_files'
-if not os.path.exists(outfiles):                                            
-    os.makedirs(outfiles) 
-
 
 doses = [0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030]
 
+samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR',
+           '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
+           '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
 
-def getFileName(sample,structure,dose,freq=False):
-    files = glob('Diode_{}_{}_{}kGy*.root'.format(sample,structure,dose))
-    if len(files)==0 and dose == 0:
-        files = glob('Diode_{}_{}_pre*.root'.format(sample,structure,dose))
-    
-    if sample == '3101_LR' and structure == 'MOS2000' and dose == 762: 
-        files = glob('Diode_{}_{}_{}kGy.root'.format(sample,structure,dose))
+# samples = ['3007_UL','1012_UL']
 
-    if freq:
-        files = [f for f in files if '1kHz' in f]
+GCD_exclude = ['1008_LR','1113_LR','1105_LR']
+MOS_exclude = ['1012_UL']
+
+def checkGoodList(ls):
+    for i,l1 in enumerate(ls):
+        for j,l2 in enumerate(ls):
+            if i==j: continue
+            if l1 in l2: 
+                if l1+'_1kHz' in l2: continue
+                if 'GCD' in l1 and l1.split('_')[1]+'_'+l1.split('_')[2] in GCD_exclude:
+                    continue
+                print '\nWARNING: potential duplicate:', l1, l2
+                print 'please check\n'
+    return
+
+def readGoodList():
+    global good_GCD
+    global good_MOS
+    f_GCD = open('good_GCD.txt','r') 
+    f_MOS = open('good_MOS.txt','r') 
+    good_GCD = f_GCD.read().splitlines()
+    good_MOS = f_MOS.read().splitlines()
+    return
+
+def getGoodDirectory(sample, structure, dose,freq=False):
+
+    if 'MOS' in structure:
+        ls = good_MOS
+    elif 'GCD' in structure:
+        ls = good_GCD
     else:
-        files = [f for f in files if not '1kHz' in f]
+        print 'invalid structure: ', structure
+        return
 
-    if len(files)>0: 
-        return files[-1]
-    else: return
+    name = '{}_{}_{}kGy'.format(sample,structure,dose)
+    if freq and 'MOS' in structure:
+        name += '_1kHz'
+    for l in ls:
+        if not freq and 'kHz' in l:
+            continue
+        if name in l:
+            return l
+    if dose == 0:
+        name = name.replace('_0kGy','_pre')
+        for l in ls:
+            if not freq and 'kHz' in l:
+                continue
+            if name in l:
+                return l
+    return 
 
-def getPlot(sample,structure,dose,freq=False):
-    filename = getFileName(sample,structure,dose,freq)
-    if filename == None: return
-    tf = TFile.Open(filename,'READ')
-    tge = tf.Get('tge_0')
-    tf.Close()
+def formPath(sample, structure, dose,freq):
+    gd = getGoodDirectory(sample,structure,dose)
+    if gd is None:
+        return
+    inpath = '{}/{}'.format(indir,gd)
+    if 'MOS' in structure:
+        inpath += '/{}_CV_needle_pad_1.txt'.format(inpath.split('/')[-1])
+    elif 'GCD' in structure:
+        inpath += '/{}_IV_needle_pad_1.txt'.format(inpath.split('/')[-1])
+    else:
+        print 'invalid structure: ', structure
+        return
+    if not os.path.exists(inpath):
+        print 'ERROR! file does not exist:', inpath
+        print 'please check\n'
+        return
+    return inpath
+
+
+def readFile(path):
+    f = open(path,'r')
+    l = f.read().splitlines()
+    for i, line in enumerate(l):
+        if '#Channel' in line: break
+    l = l[i+2:]
+    V = []
+    IC = []
+    eIC = []
+    for line in l:
+        line = line.split('\t')
+        V.append(float(line[0]))
+        IC.append(float(line[2]))
+        eIC.append(float(line[3]))
+    return [V, IC, eIC]
+
+def makePlot(sample,structure,dose,freq=False):
+    path = formPath(sample, structure, dose,freq)
+    if path is None:
+        return
+    V, IC, eIC = readFile(path)
+    tge = TGraphErrors()
+    for i in range(0,len(V)):
+        if 'GCD' in structure:
+            IC[i] *= -1.
+        tge.SetPoint(i,-1*V[i],IC[i])
+        tge.SetPointError(i,0,eIC[i])
+    if 'MOS' in structure:
+        tge.SetName('gC')
+        tge.SetTitle('CV; -V gate [V]; MOS C [pF]')
+    elif 'GCD' in structure:
+        tge.SetName('gI')
+        tge.SetTitle('IV; -V gate [V]; diode I [nA]')
+
     return tge
 
 def graph_derivative(g):
@@ -78,7 +159,7 @@ def findX(yy,tge):
 
 def fitVfb(sample,structure,dose,freq=False):
 
-    tge = getPlot(sample,structure,dose,freq)
+    tge = makePlot(sample,structure,dose,freq)
     if tge == None: return
 
     if sample == '1112_LR' and structure == 'MOShalf':
@@ -245,7 +326,7 @@ def fitVfb(sample,structure,dose,freq=False):
     return Vfb
 
 
-def calculate_parameters(V_fb, structure, C_ox):
+def calculate_parameters(V_fb, structure, C_ox, sample):
 
     A = cnst.A_MOShalf
     if structure == 'MOS2000':
@@ -278,8 +359,10 @@ def calculate_parameters(V_fb, structure, C_ox):
 
 
 def processMOS(sample,structure,Cox,freq=False):
-    # f = open('{}/{}_{}.txt'.format(outfiles,sample,structure),'w')
-    # f.write('dose [kGy] \t V_fb [-V] \t N_ox [1/cm2]\n\n')
+
+    if sample in MOS_exclude:
+        return
+
     gVfb = TGraph()
     gNox = TGraph()
     gVfb.SetName('gVfb')
@@ -307,7 +390,7 @@ def processMOS(sample,structure,Cox,freq=False):
 
         Vfb = fitVfb(sample,structure,dose,freq)
         if Vfb == None : continue
-        Nox, tox = calculate_parameters(Vfb, structure, Cox)
+        Nox, tox = calculate_parameters(Vfb, structure, Cox, sample)
         # f.write('{} \t {} \t {} \n'.format(dose,Vfb,Nox))
         gVfb.SetPoint(gVfb.GetN(),dose,Vfb)
         gNox.SetPoint(gNox.GetN(),dose,Nox)
@@ -340,7 +423,9 @@ def processMOS(sample,structure,Cox,freq=False):
     return
 
 def getCox(sample,structure):
-    tge = getPlot(sample,structure,0)
+    if sample in MOS_exclude:
+        return 0
+    tge = makePlot(sample,structure,0)
     Cox = max(list(tge.GetY()))
     return Cox
 
@@ -457,7 +542,7 @@ def cutGCDcurveLow(tge,cut):
     return tge
 
 def getGCDcurrent(sample,dose):
-    tge = getPlot(sample,'GCD',dose)
+    tge = makePlot(sample,'GCD',dose)
     if tge == None: return
 
     if sample == '1112_LR':
@@ -517,11 +602,9 @@ def getGCDcurrent(sample,dose):
     return [yM-ym,e]
 
 def processGCD(sample):
-
-    if sample == '1008_LR': return
-    if sample == '1113_LR': return
-    # if sample == '1112_LR': return
-    if sample == '1105_LR': return
+    
+    if sample in GCD_exclude:
+        return
 
     gI = TGraphErrors()
     gJ = TGraphErrors()
@@ -572,8 +655,6 @@ def processSample(sample):
         structures = ['MOS']
 
     for structure in structures:
-        if sample == '1012_UL': break
-
         Cox = getCox(sample,structure)
         processMOS(sample,structure,Cox-cnst.approx_openC)
         if sample == '3009_LR':
@@ -583,13 +664,24 @@ def processSample(sample):
     return
 
 
-# samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR',
-#            '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR']
+def main():
 
-# samples = ['3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR']
-# samples = ['3007_UL','1012_UL']
+    if not os.path.exists(outdir):                                            
+        os.makedirs(outdir) 
+    if not os.path.exists(outfiles):                                            
+        os.makedirs(outfiles) 
 
-# for sample in samples:
-#     processSample(sample)
+    readGoodList()
+    checkGoodList(good_GCD)
+    checkGoodList(good_MOS)
+
+    for sample in samples:
+        processSample(sample)
+
+    return
+
+if __name__ == "__main__":
+    main()
+
 
 
