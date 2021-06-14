@@ -41,10 +41,33 @@ def readGoodList():
     good_MOS = f_MOS.read().splitlines()
     return
 
+def readMOSexcludeDose():
+    global MOS_exclude_dose
+    f = open('MOS_exclude_dose.txt','r')
+    lines = f.read().splitlines()
+    f.close()
+    lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
+    MOS_exclude_dose = [l.replace(' ','').split('&') for l in lines]
+    for l in MOS_exclude_dose:
+        if len(l) != 3:
+            print 'ERROR in file MOS_exclude_dose.txt: wrong number of arguments in entry below\n {}'.format(l)
+            sys.exit()
+        if l[1] != 'MOShalf' and l[1] != 'MOS2000':
+            print 'ERROR in file MOS_exclude_dose.txt: structure in entry below not recognised\n {}'.format(l)
+            sys.exit()
+    return
+
+def isMOSexcluded(sample,structure,dose):
+    for l in MOS_exclude_dose:
+        if l[0] == sample and l[1] == structure and float(l[2])==dose:
+            return True
+    return False
+
 def readCustomRampFile():
     global list_CRF
     f = open('ramp_custom.txt','r')
     lines = f.read().splitlines()
+    f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     list_CRF = [l.replace(' ','').split('&') for l in lines]
     for l in list_CRF:
@@ -62,7 +85,6 @@ def readCustomRampFile():
                 print 'ERROR in file ramp_custom.txt: please specify true/false (or nothing) for freq in the entry below\n {}'.format(l)
                 sys.exit()
 
-    f.close()
     return
 
 def getCustomRamp(sample,structure,dose):
@@ -410,23 +432,7 @@ def processMOS(sample,structure,Cox,freq=False):
     gNox.SetName('gNox')
 
     for dose in doses:
-        if sample == '3009_LR' and structure == 'MOShalf' and dose == 1:
-            continue
-        if sample == '3101_LR' and dose == 100:
-            continue
-        if sample == '1011_LR' and dose == 100:
-            continue
-        if sample == '1006_LR' and structure == 'MOS2000' and dose == 40:
-            continue
-        if sample == '1113_LR' and structure == 'MOS2000' and dose == 40:
-            continue
-        if sample == '3103_LR' and structure == 'MOS2000' and dose == 40:
-            continue
-        if sample == '3001_UL' and structure == 'MOS2000' and dose == 40:
-            continue
-        if sample == '3007_UL' and structure == 'MOS2000' and dose == 40:
-            continue
-        if sample == '3101_LR' and structure == 'MOS2000' and dose == 762:
+        if isMOSexcluded(sample,structure,dose):
             continue
 
         Vfb = fitVfb(sample,structure,dose,freq)
@@ -437,7 +443,7 @@ def processMOS(sample,structure,Cox,freq=False):
         gNox.SetPoint(gNox.GetN(),dose,Nox)
     # f.close()
 
-    if freq:¯˘
+    if freq:
         tf = TFile.Open('{}/dose_{}_{}_1kHz.root'.format(outfiles,sample,structure),'recreate')
     else:
         tf = TFile.Open('{}/dose_{}_{}.root'.format(outfiles,sample,structure),'recreate')
@@ -716,6 +722,7 @@ def main():
     checkGoodList(good_GCD)
     checkGoodList(good_MOS)
     readCustomRampFile()
+    readMOSexcludeDose()
 
     for sample in samples:
         processSample(sample)

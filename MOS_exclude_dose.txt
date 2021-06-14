@@ -1,0 +1,19 @@
+
+# comments with '#'
+# values separated by '&'
+# dose points to exclude for MOS structures
+
+# sample & structure & dose
+
+3009_LR & MOShalf & 1
+1006_LR & MOS2000 & 40
+1113_LR & MOS2000 & 40
+3103_LR & MOS2000 & 40
+3001_UL & MOS2000 & 40
+3007_UL & MOS2000 & 40
+3101_LR & MOS2000 & 762
+3101_LR  & MOShalf & 100
+1011_LR & MOShalf & 100
+3101_LR  & MOS2000 & 100
+1011_LR & MOS2000 & 100
+
