@@ -233,7 +233,7 @@ def findX(yy,tge):
     return (X[i]+X[i-1])*.5
 
 
-def fitVfb(sample,structure,dose,freq=False):
+def fitVfb(sample,structure,dose,Cox,freq=False):
 
     tge = makePlot(sample,structure,dose,freq)
     if tge == None: return
@@ -254,6 +254,7 @@ def fitVfb(sample,structure,dose,freq=False):
 
     minC = min(list(tge.GetY()))
     maxC = max(list(tge.GetY()))
+    maxV = max(list(tge.GetX()))
     diff = maxC-minC
 
     #incomplete curves
@@ -287,91 +288,16 @@ def fitVfb(sample,structure,dose,freq=False):
     ramp = TF1('ramp','pol1(0)',low_ramp,high_ramp)
     tge.Fit(ramp,'q','',low_ramp,high_ramp)
 
-    low_plat = high_ramp*1.1
-    high_plat = high_ramp*1.2
-
-    if dose == 0:
-        low_plat = high_ramp*1.5
-        high_plat = high_ramp*1.7
-        maxV = max(list(tge.GetX()))
-        if low_plat > maxV:
-            high_plat = maxV
-            low_plat = .9*maxV
-        if sample == '1008_LR' or sample == '1010_UL' or sample == '3001_UL':
-            if structure == 'MOShalf':
-                low_plat = .8 * maxV
-        if sample == '23_SE_GCD' or sample == 'N0538_25_LR' or sample == '3007_UL':
-            low_plat = 5
-            high_plat = 7
-    if sample == '1006_LR' and structure == 'MOS2000' and dose >=10:
-        high_plat = max(list(tge.GetX()))
-        low_plat = .95 * high_plat
-    if sample == 'N0538_25_LR' and structure == 'MOS2000' and dose ==5:
-        high_plat = max(list(tge.GetX()))
-        low_plat = .95 * high_plat
-
-    if sample == '3010_LR' and structure == 'MOS2000' and dose == 2:
-        low_plat = 145
-        high_ramp = 150
-
-    if sample == '24_E_MOS' and structure == 'MOSc2' and dose == 2:
-        low_plat = 145
-        high_ramp = 150
-
-
-    if '1009' in sample and dose == 40 and structure == 'MOShalf':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '1011_LR' in sample and dose == 20 and structure == 'MOShalf':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '3001' in sample and dose == 70 and structure == 'MOShalf':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '1112_LR' in sample and dose == 100 and structure == 'MOShalf':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '1011_LR' in sample and dose == 10 and structure == 'MOS2000':
-        low_plat = high_ramp*1.03
-        high_plat = high_ramp*1.1
-    if '1011_LR' in sample and dose == 2 and structure == 'MOS2000':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '1008_LR' in sample and dose == 2 and structure == 'MOS2000':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '1113_LR' in sample and dose == 5 and structure == 'MOS2000':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if '3001_UL' in sample and dose == 10 and structure == 'MOS2000':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
-    if sample == '1010_UL' and (dose == 5 or dose == 10) and structure == 'MOS2000':
-        low_plat = high_ramp*1.05
-        high_plat = high_ramp*1.1
- 
-    if sample == '23_SE_GCD' and dose == 70:
-        high_plat = max(list(tge.GetX()))
-        low_plat = high_plat *.95
-    if sample == 'N0538_25_LR' and dose == 20:
-        high_plat = max(list(tge.GetX()))
-        low_plat = high_plat *.95
-    
-
-
-    plat = TF1('plat','pol1(0)',low_plat,high_plat)
-    tge.Fit(plat,'q','',low_plat,high_plat)
-
-    Vfb = (ramp.GetParameter(0)-plat.GetParameter(0))/(ramp.GetParameter(1)-plat.GetParameter(1))*(-1.)
+    # Vfb = (ramp.GetParameter(0)-plat.GetParameter(0))/(ramp.GetParameter(1)-plat.GetParameter(1))*(-1.)
+    Vfb = -1.*(ramp.GetParameter(0)-Cox)/ramp.GetParameter(1)
 
     tge.Draw('ap')
-    plat.Draw('l same')
     ramp.Draw('l same')
 
     ramp_ext = TF1('ramp_ext','pol1(0)',high_ramp,Vfb+5)
-    plat_ext = TF1('plat_ext','pol1(0)',Vfb-10,low_plat)
+    plat_ext = TF1('plat_ext','pol0(0)',Vfb-10,maxV)
     ramp_ext.SetParameters(ramp.GetParameter(0),ramp.GetParameter(1))
-    plat_ext.SetParameters(plat.GetParameter(0),plat.GetParameter(1))
+    plat_ext.SetParameter(0,Cox)
     ramp_ext.SetLineColor(kBlue)
     plat_ext.SetLineColor(kBlue)
 
@@ -435,9 +361,9 @@ def processMOS(sample,structure,Cox,freq=False):
         if isMOSexcluded(sample,structure,dose):
             continue
 
-        Vfb = fitVfb(sample,structure,dose,freq)
+        Vfb = fitVfb(sample,structure,dose,Cox,freq)
         if Vfb == None : continue
-        Nox, tox = calculate_parameters(Vfb, structure, Cox, sample)
+        Nox, tox = calculate_parameters(Vfb, structure, Cox-cnst.approx_openC, sample)
         # f.write('{} \t {} \t {} \n'.format(dose,Vfb,Nox))
         gVfb.SetPoint(gVfb.GetN(),dose,Vfb)
         gNox.SetPoint(gNox.GetN(),dose,Nox)
@@ -472,8 +398,15 @@ def processMOS(sample,structure,Cox,freq=False):
 def getCox(sample,structure):
     if sample in MOS_exclude:
         return 0
-    tge = makePlot(sample,structure,0)
-    Cox = max(list(tge.GetY()))
+    Cox = 0
+    for dose in doses:
+        if isMOSexcluded(sample,structure,dose):
+            continue
+        tge = makePlot(sample,structure,dose)
+        if tge is None:
+            continue
+        maxC = max(list(tge.GetY()))
+        Cox = max(maxC,Cox)
     return Cox
 
 def calculate_GCD_parameters(I,sample):
@@ -703,9 +636,9 @@ def processSample(sample):
 
     for structure in structures:
         Cox = getCox(sample,structure)
-        processMOS(sample,structure,Cox-cnst.approx_openC)
+        processMOS(sample,structure,Cox)
         if sample == '3009_LR':
-            processMOS(sample,structure,Cox-cnst.approx_openC,freq=True)
+            processMOS(sample,structure,Cox,freq=True)
     if not '_E_' in sample:
             processGCD(sample)
     return
