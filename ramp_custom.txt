@@ -1,0 +1,17 @@
+
+# comments with '#'
+# values separated by '&'
+# please use -999 if you do not wish to specify one value (e.g. high_ramp)
+
+# sample & structure & dose & rel/abs & low & high & freq (optional)
+
+3101_LR & MOS2000 & 762 & rel & .6 & .9
+1011_LR & MOS2000 & 2 & rel & .45 & .85 
+1008_LR & MOS2000 & 1 & rel & .7 & .85
+1008_LR & MOS2000 & 2 & rel & .7 & .85
+1006_LR & MOS2000 & 10 & rel & .65 & -999
+3101_LR & MOS2000 & 1030 & rel & .7 & .95
+3010_LR & MOS2000 & 2 & abs & 135 & 140
+3009_LR & MOS2000 & 1 & abs & -999 & 94.5 & false
+3009_LR & MOShalf & 70 & abs & 135 & 155 & true
+1008_LR & MOShalf & 1 & abs & 31.5 & 33.5

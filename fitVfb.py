@@ -3,6 +3,7 @@ from ROOT import *
 from glob import glob
 import os
 import constants as cnst
+import sys
 
 gROOT.SetBatch(True)
 
@@ -39,6 +40,61 @@ def readGoodList():
     good_GCD = f_GCD.read().splitlines()
     good_MOS = f_MOS.read().splitlines()
     return
+
+def readCustomRampFile():
+    global list_CRF
+    f = open('ramp_custom.txt','r')
+    lines = f.read().splitlines()
+    lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
+    list_CRF = [l.replace(' ','').split('&') for l in lines]
+    for l in list_CRF:
+        if len(l) < 6 or len(l) > 7:
+            print 'ERROR in file ramp_custom.txt: wrong number of arguments in entry below\n {}'.format(l)
+            sys.exit()
+        if l[1] != 'MOShalf' and l[1] != 'MOS2000':
+            print 'ERROR in file ramp_custom.txt: structure in entry below not recognised\n {}'.format(l)
+            sys.exit()
+        if l[3].lower() != 'rel' and l[3].lower() != 'abs':
+            print 'ERROR in file ramp_custom.txt: please specify rel/abs correctly in the entry below\n {}'.format(l)
+            sys.exit()
+        if len(l) > 6:
+            if l[6].lower() != 'true' and l[6].lower() != 'false':
+                print 'ERROR in file ramp_custom.txt: please specify true/false (or nothing) for freq in the entry below\n {}'.format(l)
+                sys.exit()
+
+    f.close()
+    return
+
+def getCustomRamp(sample,structure,dose):
+    for l in list_CRF:
+        if l[0] == sample and l[1] == structure and float(l[2])==dose:
+            if len(l) > 6:
+                return float(l[4]), float(l[5]), l[3].lower() == 'rel', l[6].lower()=='true'
+            else:
+                return float(l[4]), float(l[5]), l[3].lower() == 'rel', None
+    return
+
+def isCustomRamp(sample,structure,dose,freq):
+    for l in list_CRF:
+        if l[0] == sample and l[1] == structure and float(l[2])==dose:
+            if len(l) < 7:
+                return True
+            if l[6].lower() == 'true' and freq:
+                return True
+            if l[6].lower() == 'false' and not freq:
+                return True
+    return False
+
+def getCustomRampValues(sample,structure,dose,freq):
+    for l in list_CRF:
+        if l[0] == sample and l[1] == structure and float(l[2])==dose:
+            if len(l) < 7:
+                return float(l[4]), float(l[5]), l[3].lower() == 'rel'
+            if l[6].lower() == 'true' and freq:
+                return float(l[4]), float(l[5]), l[3].lower() == 'rel'
+            if l[6].lower() == 'false' and not freq:
+                return float(l[4]), float(l[5]), l[3].lower() == 'rel'
+    return None
 
 def getGoodDirectory(sample, structure, dose,freq=False):
 
@@ -178,50 +234,33 @@ def fitVfb(sample,structure,dose,freq=False):
     maxC = max(list(tge.GetY()))
     diff = maxC-minC
 
+    #incomplete curves
     if structure =='MOS2000' and maxC<200:
         return
 
     low_ramp = findX (minC + .5 * diff, tge)
     high_ramp = findX (minC + .9 * diff, tge)
 
-    if sample == '3101_LR' and structure == 'MOS2000' and dose == 762:
-        low_ramp = findX (minC + .6 * diff, tge)
-        high_ramp = findX (minC + .9 * diff, tge)
-
-    if sample == '1011_LR' and structure == 'MOS2000' and dose == 2:
-        low_ramp = findX (minC + .45 * diff, tge)
-        high_ramp = findX (minC + .85 * diff, tge)
-    if sample == '1008_LR' and structure == 'MOS2000' and (dose == 2 or dose ==1):
-        low_ramp = findX (minC + .7 * diff, tge)
-        high_ramp = findX (minC + .85 * diff, tge)
-    if sample == '1006_LR' and structure == 'MOS2000' and dose == 10:
-        low_ramp = findX (minC + .65 * diff, tge)
-    if sample == '3101_LR' and structure == 'MOS2000' and dose == 1030:
-        low_ramp = findX (minC + .7 * diff, tge)
-        high_ramp = findX (minC + .95 * diff, tge)
-    if sample == '3010_LR' and structure == 'MOS2000' and dose == 2:
-        low_ramp = 135
-        high_ramp = 140
-
-
-
-    if sample == '3009_LR' and structure == 'MOS2000' and dose == 1 and freq == False:
-        high_ramp -= 3
-    if sample == '3009_LR' and structure == 'MOShalf' and dose == 70 and freq == True:
-        low_ramp = 135
-        high_ramp = 155
-
-
     if dose == 0:
         low_ramp = findX (minC + .3 * diff, tge)
         high_ramp = findX (minC + .7 * diff, tge)
 
-    if '1008' in sample and dose == 1 and structure == 'MOShalf':
-        low_ramp = 31.5
-        high_ramp = 33.5
+    isCustom = isCustomRamp(sample,structure,dose,freq)
 
-
-        
+    #adjusting custom ranges
+    if isCustom:
+        c_low, c_high, isRel = getCustomRampValues(sample,structure,dose,freq)
+        if isRel:
+            if c_low != -999:
+                low_ramp = findX (minC + c_low * diff, tge)
+            if c_high != -999:
+                high_ramp = findX (minC + c_high * diff, tge)
+        else:
+            if c_low != -999:
+                low_ramp = c_low
+            if c_high != -999:
+                high_ramp = c_high
+            
 
     ramp = TF1('ramp','pol1(0)',low_ramp,high_ramp)
     tge.Fit(ramp,'q','',low_ramp,high_ramp)
@@ -398,7 +437,7 @@ def processMOS(sample,structure,Cox,freq=False):
         gNox.SetPoint(gNox.GetN(),dose,Nox)
     # f.close()
 
-    if freq:
+    if freq:¯˘
         tf = TFile.Open('{}/dose_{}_{}_1kHz.root'.format(outfiles,sample,structure),'recreate')
     else:
         tf = TFile.Open('{}/dose_{}_{}.root'.format(outfiles,sample,structure),'recreate')
@@ -676,6 +715,7 @@ def main():
     readGoodList()
     checkGoodList(good_GCD)
     checkGoodList(good_MOS)
+    readCustomRampFile()
 
     for sample in samples:
         processSample(sample)
