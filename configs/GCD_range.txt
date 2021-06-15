@@ -1,0 +1,25 @@
+# comments with '#'
+# values separated by '&'
+
+# ranges for GCD depletion
+# please use dose+/dose- for >= dose and <= dose, respectively (e.g. 70+)
+# please use -999 if you do not wish to give a value
+# please use +range/-range increasing/decreasing the default range (see code)
+
+# sample, dose, low, high
+
+
+3103_LR & 40 & -999 & +10
+3101_LR & 1000- & -20 & -999 
+3101_LR & 1000+ & -30 & -999 
+1010_UL & 1 & +5 & -999
+3009_LR & 20+ & -15 & +20
+1006_LR & 70+ & -20 & -999 
+3010_LR & 40+ & -20 & +20
+3010_LR & 20 & -999 & +10
+23_SE_GCD & 40+ & -20 & +30
+N0538_25_LR & 1 & -10 & -7
+N0538_25_LR & 40+ & -20 & +20
+3007_UL & 20+ & -20 & -999
+
+

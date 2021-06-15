@@ -145,6 +145,36 @@ def getGCDcuts(sample,dose):
 
     return low, high, gmin, gmax
 
+def readGCDranges():
+    global GCD_ranges
+    f = open('configs/GCD_range.txt','r')
+    lines = f.read().splitlines()
+    f.close()
+    lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
+    GCD_ranges = [l.replace(' ','').split('&') for l in lines]
+    for l in GCD_ranges:
+        if len(l) != 4:
+            print 'ERROR in file GCD_range.txt: wrong number of arguments in entry below\n {}'.format(l)
+            sys.exit()
+    return
+
+def getGCDrange(sample,dose,low,high):
+    for l in GCD_ranges:
+        if sample != l[0]: continue
+        if '+' in l[1]:
+            d = float(l[1].replace('+',''))
+            if dose < d: continue
+        elif '-' in l[1]:
+            d = float(l[1].replace('-',''))
+            if dose > d: continue
+        else:
+            d = float(l[1])
+            if dose != d: continue
+        if int(l[2]) != -999:
+            low += float(l[2])
+        if int(l[3]) != -999:
+            high += float(l[3])
+    return low, high
 
 def readCustomRampFile():
     global list_CRF
@@ -530,39 +560,7 @@ def findApproxDepletion(sample,dose,tge):
     
     xL = X[i]-10
     xH = X[i]+10
-
-    if sample == '3103_LR' and dose == 40:
-        xH += 10
-    if sample == '3101_LR':
-        xL -= 20
-        if dose > 1000:
-            xL -= 10
-    if sample == '1010_UL' and dose == 1:
-        xL += 5
-    if sample == '3009_LR' and dose >= 20:
-        xL -= 15
-        xH += 20
-    if sample == '1006_LR' and dose >= 70:
-        xL -= 20
-
-    if sample == '3010_LR' and dose >= 40:
-        xL -= 20
-        xH += 20
-
-    if sample == '3010_LR' and dose == 20:
-        xH +=10
-        
-    if sample == '23_SE_GCD' and dose >=40:
-        xH +=30
-        xL -=20
-    if sample == 'N0538_25_LR' and dose == 1:
-        xH -= 7
-        xL -= 10
-    if sample == 'N0538_25_LR' and dose >= 40:
-        xL -= 20
-        xH += 20
-    if sample == '3007_UL' and dose >= 20:
-        xL -= 20
+    xL, xH = getGCDrange(sample,dose,xL,xH)
 
     ym = +999
     yM = -999
@@ -716,6 +714,7 @@ def initialize():
     readGCDexcludeDose()
     readRemovePoints()
     readGCDcuts()
+    readGCDranges()
 
     return
 
