@@ -35,15 +35,15 @@ def checkGoodList(ls):
 def readGoodList():
     global good_GCD
     global good_MOS
-    f_GCD = open('good_GCD.txt','r') 
-    f_MOS = open('good_MOS.txt','r') 
+    f_GCD = open('configs/good_GCD.txt','r') 
+    f_MOS = open('configs/good_MOS.txt','r') 
     good_GCD = f_GCD.read().splitlines()
     good_MOS = f_MOS.read().splitlines()
     return
 
 def readMOSexcludeDose():
     global MOS_exclude_dose
-    f = open('MOS_exclude_dose.txt','r')
+    f = open('configs/MOS_exclude_dose.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
@@ -66,7 +66,7 @@ def isMOSexcluded(sample,structure,dose):
 
 def readGCDexcludeDose():
     global GCD_exclude_dose
-    f = open('GCD_exclude_dose.txt','r')
+    f = open('configs/GCD_exclude_dose.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
@@ -92,7 +92,7 @@ def isGCDexcluded(sample,dose):
 
 def readCustomRampFile():
     global list_CRF
-    f = open('ramp_custom.txt','r')
+    f = open('configs/ramp_custom.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
