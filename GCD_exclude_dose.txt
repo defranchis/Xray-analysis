@@ -1,0 +1,12 @@
+
+# comments with '#'
+# values separated by '&'
+# dose points to exclude for GCD structures
+# please use '+' to indicate dose >= X, e.g. '1111_LR & 70+'
+
+# sample & exclude
+
+3103_LR & 70+
+3101_LR & 100
+23_SE_GCD & 1
+3007_UL & 70+

@@ -17,7 +17,7 @@ samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR'
            '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
            '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
 
-GCD_exclude = ['1008_LR','1113_LR','1105_LR']
+GCD_exclude = ['1008_LR','1113_LR','1105_LR','1112_LR']
 MOS_exclude = ['1012_UL']
 
 def checkGoodList(ls):
@@ -62,6 +62,33 @@ def isMOSexcluded(sample,structure,dose):
         if l[0] == sample and l[1] == structure and float(l[2])==dose:
             return True
     return False
+
+
+def readGCDexcludeDose():
+    global GCD_exclude_dose
+    f = open('GCD_exclude_dose.txt','r')
+    lines = f.read().splitlines()
+    f.close()
+    lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
+    GCD_exclude_dose = [l.replace(' ','').split('&') for l in lines]
+    for l in GCD_exclude_dose:
+        if len(l) != 2:
+            print 'ERROR in file GCD_exclude_dose.txt: wrong number of arguments in entry below\n {}'.format(l)
+            sys.exit()
+    return
+
+def isGCDexcluded(sample,dose):
+    for l in GCD_exclude_dose:
+        if l[0] == sample:
+            if '+' in l[1]:
+                d = float(l[1].replace('+',''))
+                if dose >= d:
+                    return True
+            else:
+                if dose == float(l[1]):
+                    return True
+    return False
+
 
 def readCustomRampFile():
     global list_CRF
@@ -593,12 +620,9 @@ def processGCD(sample):
 
     for dose in doses:
         if dose==0: continue
-        if sample == '3103_LR' and dose >=70: continue
-        if sample == '3101_LR' and dose ==100: continue
-        if sample == '1112_LR' and dose !=1 : continue
-        if sample == '23_SE_GCD' and dose <=1: continue
-        if sample == '3007_UL' and dose >=70: continue
-
+        if isGCDexcluded(sample,dose):
+            continue
+        
         Ie = getGCDcurrent(sample,dose)
         if Ie == None : continue
         I = Ie[0]
@@ -656,6 +680,7 @@ def main():
     checkGoodList(good_MOS)
     readCustomRampFile()
     readMOSexcludeDose()
+    readGCDexcludeDose()
 
     for sample in samples:
         processSample(sample)
