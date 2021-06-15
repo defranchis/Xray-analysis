@@ -89,6 +89,62 @@ def isGCDexcluded(sample,dose):
                     return True
     return False
 
+def readRemovePoints():
+    global remove_points
+    f = open('configs/remove_last_point.txt','r')
+    lines = f.read().splitlines()
+    f.close()
+    lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
+    remove_points = [l.replace(' ','').split('&') for l in lines]
+    for l in remove_points:
+        if len(l) != 3 and len(l) != 4:
+            print 'ERROR in file remove_last_point.txt: wrong number of arguments in entry below\n {}'.format(l)
+            sys.exit()
+    return
+
+def pointsToRemove(sample,structure,dose):
+    for l in remove_points:
+        if l[0] == sample and l[1] == structure and float(l[2])==dose:
+            if len(l) == 4:
+                return int(l[3])
+            else:
+                return 1
+    return 0
+
+def readGCDcuts():
+    global GCD_cuts
+    f = open('configs/cut_GCD_curve.txt','r')
+    lines = f.read().splitlines()
+    f.close()
+    lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
+    GCD_cuts = [l.replace(' ','').split('&') for l in lines]
+    for l in GCD_cuts:
+        if len(l) != 4 and len(l) != 6:
+            print 'ERROR in file cut_GCD_curve.txt: wrong number of arguments in entry below\n {}'.format(l)
+            sys.exit()
+    return
+
+def getGCDcuts(sample,dose):
+    low = high = gmin = gmax = -999
+    for l in GCD_cuts:
+        if sample != l[0]: continue
+        if '+' in l[1]:
+            d = float(l[1].replace('+',''))
+            if dose < d: continue
+        elif '-' in l[1]:
+            d = float(l[1].replace('-',''))
+            if dose > d: continue
+        else:
+            d = float(l[1])
+            if dose != d: continue
+        low = float(l[2])
+        high = float(l[3])
+        if len(l) == 6:
+            gmin = float(l[4])
+            gmax = float(l[5])
+
+    return low, high, gmin, gmax
+
 
 def readCustomRampFile():
     global list_CRF
@@ -265,9 +321,7 @@ def fitVfb(sample,structure,dose,Cox,freq=False):
     tge = makePlot(sample,structure,dose,freq)
     if tge == None: return
 
-    if sample == '1112_LR' and structure == 'MOShalf':
-        tge.RemovePoint(tge.GetN()-1)
-        tge.RemovePoint(tge.GetN()-1)
+    for k in range(0,pointsToRemove(sample,structure,dose)):
         tge.RemovePoint(tge.GetN()-1)
 
     cut = True
@@ -552,34 +606,19 @@ def getGCDcurrent(sample,dose):
     tge = makePlot(sample,'GCD',dose)
     if tge == None: return
 
-    if sample == '1112_LR':
-        tge = cutGCDcurve(tge,50)
-    if sample == '3103_LR' and dose == 20:
-        tge = cutGCDcurve(tge,40)
-    if sample == '3103_LR' and dose == 40:
-        tge = cutGCDcurve(tge,47)
-    if sample == '3003_UL' and dose == 5:
+    for k in range(0,pointsToRemove(sample,'GCD',dose)):
         tge.RemovePoint(tge.GetN()-1)
-        tge = cutGCDcurve(tge,40)
-    if sample == '1012_UL' and dose == 1:
-        tge.RemovePoint(tge.GetN()-1)
-        tge.SetMinimum(0)
-        tge.SetMaximum(.4)
-    if sample == '1011_LR' and dose <= 5:
-        tge = cutGCDcurve(tge,40)
-    if sample == '1011_LR' and dose >= 10:
-        tge = cutGCDcurve(tge,55)
-    if sample == '1109_LR' and dose == 40:
-        tge = cutGCDcurveLow(tge,50)
-    if sample == '1109_LR' and dose == 1:
-        tge = cutGCDcurveLow(tge,-2)
-    if sample == '1109_LR' and dose >= 40:
-        tge = cutGCDcurve(tge,80)
-    if sample == '3007_UL' and dose == 20:
-        tge = cutGCDcurve(tge,45)
-    if sample == '3007_UL' and dose == 40:
-        tge = cutGCDcurve(tge,50)
+        
+    low, high, gmin, gmax = getGCDcuts(sample,dose)
 
+    if low != -999:
+        tge = cutGCDcurveLow(tge,low)
+    if high != -999:
+        tge = cutGCDcurve(tge,high)
+    if gmin != -999:
+        tge.SetMinimum(gmin)
+    if gmax != -999:
+        tge.SetMaximum(gmax)
 
 
     tge_orig = tge.Clone()    
@@ -667,6 +706,18 @@ def processSample(sample):
             processGCD(sample)
     return
 
+def initialize():
+
+    readGoodList()
+    checkGoodList(good_GCD)
+    checkGoodList(good_MOS)
+    readCustomRampFile()
+    readMOSexcludeDose()
+    readGCDexcludeDose()
+    readRemovePoints()
+    readGCDcuts()
+
+    return
 
 def main():
 
@@ -675,12 +726,7 @@ def main():
     if not os.path.exists(outfiles):                                            
         os.makedirs(outfiles) 
 
-    readGoodList()
-    checkGoodList(good_GCD)
-    checkGoodList(good_MOS)
-    readCustomRampFile()
-    readMOSexcludeDose()
-    readGCDexcludeDose()
+    initialize()
 
     for sample in samples:
         processSample(sample)

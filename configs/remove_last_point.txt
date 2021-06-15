@@ -1,0 +1,10 @@
+
+# comments with '#'
+# values separated by '&'
+# number of last points to be excluded
+
+# sample & structure & dose & npoints (optional, default = 1)
+
+3003_UL & GCD & 5
+1012_UL & GCD & 1
+1112_LR & MOShalf & 1 & 3 
