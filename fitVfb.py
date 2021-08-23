@@ -14,6 +14,8 @@ from glob import glob
 import os
 import constants as cnst
 
+from functionsAnnealing import *
+
 import argparse
 
 # now passed with options
@@ -323,38 +325,6 @@ def makePlot(args, sample, structure, dose, freq=False):
         tge.SetTitle('IV; -V gate [V]; diode I [nA]')
     return tge
 
-def graph_derivative(g):
-    der = ROOT.TGraph()
-    for i in range(0,g.GetN()-1):
-        der.SetPoint(i,(g.GetPointX(i+1)+g.GetPointX(i))/2.,(g.GetPointY(i+1)-g.GetPointY(i))/(g.GetPointX(i+1)-g.GetPointX(i)))
-    return der
-
-def cutGraph(old):
-    new = ROOT.TGraphErrors()
-    X = list(old.GetX())
-    Y = list(old.GetY())
-    EX = list(old.GetEX())
-    EY = list(old.GetEY())
-    i = Y.index(min(Y))
-    X = X[i:]
-    Y = Y[i:]
-    EX = EX[i:]
-    EY = EY[i:]
-
-    for i,x in enumerate(X):
-        new.SetPoint(i,x,Y[i])
-        new.SetPointError(i,EX[i],EY[i])
-
-    return new
-
-
-def findX(yy,tge):
-    X = list(tge.GetX())
-    Y = list(tge.GetY())
-    for i,y in enumerate(Y):
-        if y>yy: break
-    return 0.5 * (X[i] + X[i-1])
-
 
 def fitVfb(args, sample, structure, dose, Cox, freq=False):
 
@@ -372,7 +342,8 @@ def fitVfb(args, sample, structure, dose, Cox, freq=False):
         tge = cutGraph(tge)
     
     c = ROOT.TCanvas()
-
+    
+    
     minC = min(list(tge.GetY()))
     maxC = max(list(tge.GetY()))
     maxV = max(list(tge.GetX()))
@@ -493,9 +464,10 @@ def processMOS(args, sample, structure, Cox, freq=False):
     rfName = f"{args.outfiles}/dose_{sample}_{structure}"
     if freq:
         rfName += "_1kHz"
-    tf = ROOT.TFile.Open(f"{rfName}.root", 'recreate')
+    tf = safeOpenFile(f"{rfName}.root", mode='recreate')
     gVfb.Write()
     gNox.Write()
+    tf.Close()
 
     c = ROOT.TCanvas()
     gVfb.SetTitle('{} {}; dose [kGy]; V flat-band [-V]'.format(sample,structure))
@@ -630,7 +602,6 @@ def getGCDcurrent(args, sample, dose):
     if gmax != -999:
         tge.SetMaximum(gmax)
 
-
     tge_orig = tge.Clone()    
     threshold = 0.05
     if sample == '3009_LR' and dose == 2:
@@ -672,7 +643,7 @@ def processGCD(args, sample):
         if isGCDexcluded(sample,dose):
             continue
         
-        Ie = getGCDcurrent(args, sample,dose)
+        Ie = getGCDcurrent(args, sample, dose)
         if Ie == None : continue
         I = Ie[0]
         e = Ie[1]
@@ -683,15 +654,16 @@ def processGCD(args, sample):
         gJ.SetPointError(gJ.GetN()-1, 0, e*J/I)
 
 
-    tf = ROOT.TFile.Open(f"{args.outfiles}/dose_{sample}_GCD.root",'recreate')
+    tf = safeOpenFile(f"{args.outfiles}/dose_{sample}_GCD.root", mode='recreate')
     gI.Write()
     gJ.Write()
+    tf.Close()
 
     c = ROOT.TCanvas()
     gI.SetTitle('{} GCD; dose [kGy]; GCD current [nA]'.format(sample))
     gI.SetMarkerStyle(7)
     gI.Draw('apl')
-    c.SaveAs('{}/dose_{}_GCD_I.png'.format(args.outdir,sample))
+    c.SaveAs('{}/dose_{}_GCD_I.png'.format(args.outdir, sample))
     c.Clear()
     gJ.SetTitle('{} GCD; dose [kGy]; surface velocity [cm/s]'.format(sample))
     gJ.SetMarkerStyle(7)
@@ -710,10 +682,13 @@ def processSample(args, sample):
 
     if not args.skipStructure == "MOS":
         for structure in structures:
-            Cox = getCox(sample,structure)
-            processMOS(args, sample, structure, Cox)
-            if sample == '3009_LR':
-                processMOS(args, sample, structure, Cox, freq=True)
+            if args.isAnnealing:
+                processMOSannealing(args, sample, structure)
+            else:
+                Cox = getCox(sample,structure)
+                processMOS(args, sample, structure, Cox)
+                if sample == '3009_LR':
+                    processMOS(args, sample, structure, Cox, freq=True)
     if not args.skipStructure == "GCD" and not '_E_' in sample:
         processGCD(args, sample)
     return
@@ -754,7 +729,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--configdir", type=str, 
                         default="./configs", help="Folder with configuration files")
     parser.add_argument(      "--outfiles", type=str, 
-                        default="./Vfb_files", help="Output folder for root files")
+                        default="./Vfb_files", help="Output folder for root files (not needed for now for annealing)")
     parser.add_argument("--doses", nargs="+", type=int, default=[0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030],
                         help="Comma separated list of irradiation doses in kGy")
     # samples
@@ -767,6 +742,8 @@ if __name__ == "__main__":
     parser.add_argument("--MOS-exclude", dest="MOS_exclude", nargs="+", default=['1012_UL'], help="List of samples to be used")
     parser.add_argument("--skip", dest="skipStructure", choices=["", "MOS", "GCD"],
                         default="", help="To exclude completely one kind of structure and be faster")
+    parser.add_argument("-a", "--is-annealing", dest="isAnnealing", action="store_true", help="Run code on annealing data")
+    parser.add_argument("--annealing-path-regexp", dest="annealingPathRegexp", type=str, default=".*", help="Use this regex to filter subfolders to be used for annealing plots")
     args = parser.parse_args()
 
     ROOT.TH1.SetDefaultSumw2()
@@ -781,7 +758,13 @@ if __name__ == "__main__":
     # print(args.GCD_exclude)
     # print(f"len = {len(args.GCD_exclude)}")
     # quit()
-    
+
+    if args.isAnnealing:
+        print()
+        print("Warning: doing annealing, thus ignoring option --outfiles")
+        print()
+        args.outfiles = ""
+
     if args.configdir.endswith("/"):
         args.configdir = args.configdir.rstrip("/")
 
