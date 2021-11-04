@@ -12,7 +12,7 @@ cmsrel CMSSW_11_3_1
 cd cmsrel CMSSW_11_3_1/src/
 cmsenv
 ```
-Set this environment variable with your github use (or set it by hand if it doesn't work)
+Set this environment variable with your github user (or set it by hand if it doesn't work). 
 Currently the code is in the branch named __mciprian_devel__ from the repository of cippy
 ```
 YOUR_GITHUB_REPOSITORY=$(git config user.github)
@@ -20,6 +20,7 @@ git remote add cippy git@github.com:cippy/Xray-analysis.git
 git clone -o cippy git@github.com:cippy/Xray-analysis.git -b mciprian_devel xRayAnalysis
 cd xRayAnalysis
 git remote add origin git@github.com:$YOUR_GITHUB_REPOSITORY/Xray-analysis.git
+```
 
 ### Examples
 
