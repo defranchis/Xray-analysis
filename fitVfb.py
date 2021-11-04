@@ -735,10 +735,8 @@ if __name__ == "__main__":
     # samples
     parser.add_argument("--samples", nargs="+", default=['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR','3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR','3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL'], help="List of samples to be used")
     # GCD to exclude from sample list above 
-    # FIXME: nargs="+" will request at least one argument, so the default should be empty array if one does not to use the options, will change it once we have these input options stored somewhere (e.g. passed from external configuration files)
     parser.add_argument("--GCD-exclude", dest="GCD_exclude", nargs="*", default=['1008_LR','1113_LR','1105_LR','1112_LR'], help="List of samples to be used")
     # MOS to exclude from sample list above
-    # FIXME: see previous comment
     parser.add_argument("--MOS-exclude", dest="MOS_exclude", nargs="*", default=['1012_UL'], help="List of samples to be used")
     parser.add_argument("--skip", dest="skipStructure", choices=["", "MOS", "GCD"],
                         default="", help="To exclude completely one kind of structure and be faster")
