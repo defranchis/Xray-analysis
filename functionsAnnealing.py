@@ -10,6 +10,21 @@ ROOT.PyConfig.IgnoreCommandLineOptions = True
 from utility import *
 import os
 
+def getSampleTypeFromName(name):
+    sampleNames = {'N4791-1_LR'  : 'A FZ',
+                   'N4790-1_UL'  : 'B FZ',
+                   'N4790-1_LR'  : 'B FZ #2',
+                   'N4791-6_UL'  : 'C FZ', 
+                   'N4791-6_LR'  : 'C FZ #2',
+                   'N4790-13_UL' : 'D FZ',
+                   'N4790-13_LR' : 'D FZ #2',
+                   'N4789-10_UL' : 'C EPI',
+                   'N4788-9_LR'  : 'D EPI'
+    }
+    return sampleNames[name]
+
+        
+
 # for annealing
 def formPathAnnealing(generalInputDir, sample, structure, afterAnnElapsedTime,
                       annealingTime=60, # in min

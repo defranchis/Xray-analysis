@@ -1412,3 +1412,125 @@ def drawGraphCMS(grList,
     for ext in [".png",".pdf"]:
         canvas.SaveAs(outputDIR+canvasName+ext)
 
+
+######
+
+
+def drawGraphs(grList, 
+               xAxisNameTmp = "xAxis", 
+               yAxisNameTmp = "yAxis", 
+               canvasName = "default",
+               outputdir = "./",
+               legendEntries = None, # text for legend
+               legendCoords = "0.5,0.15,0.9,0.35;2", # number after ; sets the number of columns
+               #lumi = None,
+               vecColors = [ROOT.kBlack, ROOT.kRed, ROOT.kGreen+2, ROOT.kBlue, ROOT.kOrange+1, ROOT.kCyan+2, ROOT.kGray+2],
+               vecMarkers = [],
+               canvasSize="800,800",
+               passCanvas=None,
+               moreText="",
+               useLogX=False,
+               useLogY=False
+           ):
+
+
+    adjustSettings_CMS_lumi()
+    xAxisName = ""
+    xmin = 0
+    xmax = 0
+    xAxisName,setXAxisRangeFromUser,xmin,xmax = getAxisRangeFromUser(xAxisNameTmp)
+    #
+    yAxisName = ""
+    ymin = 0
+    ymax = 0
+    yAxisName,setYAxisRangeFromUser,ymin,ymax = getAxisRangeFromUser(yAxisNameTmp)
+
+    frame = ROOT.TH1D("frame", moreText, 1, xmin, xmax)
+    if useLogY:
+        frame.SetBinContent(1,0.001)
+        frame.SetMarkerSize(0)
+        frame.SetMarkerColor(0)
+        frame.SetLineColor(0)
+
+    nGraphs = len(grList)
+    markers = vecMarkers if len(vecMarkers) else [20 for i in range(nGraphs)]
+
+    cw,ch = canvasSize.split(',')
+    canvas = passCanvas if passCanvas != None else ROOT.TCanvas("canvas","",int(cw),int(ch))
+    if passCanvas == None:
+        canvas.SetTickx(1)
+        canvas.SetTicky(1)
+        canvas.cd()
+        canvas.SetFillColor(0)
+        canvas.SetGrid()
+        canvas.SetLeftMargin(0.14)
+        canvas.SetRightMargin(0.06)
+        canvas.cd()
+
+    nColumnsLeg = 1
+    if ";" in legendCoords: 
+        nColumnsLeg = int(legendCoords.split(";")[1])
+    legcoords = [float(x) for x in (legendCoords.split(";")[0]).split(',')]
+    lx1,ly1,lx2,ly2 = legcoords[0],legcoords[1],legcoords[2],legcoords[3]
+    leg = ROOT.TLegend(lx1,ly1,lx2,ly2)
+    #leg.SetFillColor(0)
+    #leg.SetFillStyle(0)
+    leg.SetFillColorAlpha(0,0.6)
+    leg.SetBorderSize(0)
+    leg.SetNColumns(nColumnsLeg)
+
+    frame.Draw()
+    frame.SetStats(0)
+
+    dictLegGraph = {} # to sort legend so that entries are in alphabetic order
+    for ig in range(nGraphs):
+        grList[ig].SetMarkerStyle(markers[ig])
+        grList[ig].SetMarkerColor(vecColors[ig])
+        grList[ig].SetLineColor(vecColors[ig])
+        grList[ig].SetLineWidth(2)
+        if "EPI" in legendEntries[ig]:
+            grList[ig].SetLineStyle(9)
+        grList[ig].SetFillColor(vecColors[ig])
+        grList[ig].Draw("pl same")
+        dictLegGraph[legendEntries[ig]] = grList[ig]
+    for k in sorted(dictLegGraph.keys()):
+        leg.AddEntry(dictLegGraph[k], k, "PL")       
+
+    #canvas.RedrawAxis("sameaxis")
+
+    frame.GetXaxis().SetTitleSize(0.05)
+    frame.GetXaxis().SetLabelSize(0.04)
+    frame.GetYaxis().SetTitleOffset(1.3)
+    frame.GetYaxis().SetTitleSize(0.05)
+    frame.GetYaxis().SetLabelSize(0.04)
+    frame.GetXaxis().SetTitle(xAxisName)
+    frame.GetYaxis().SetTitle(yAxisName)
+    if setXAxisRangeFromUser:
+        frame.GetXaxis().SetRangeUser(xmin,xmax)
+    if setYAxisRangeFromUser:
+        frame.GetYaxis().SetRangeUser(ymin,ymax)
+
+    canvas.RedrawAxis("sameaxis")
+    leg.Draw("same")
+
+    text = ROOT.TLatex()
+    text.SetNDC() # not sure it is needed
+    text.SetTextSize(0.05)
+    text.SetTextFont(42)
+    text.SetTextColor(ROOT.kBlack)
+    text.DrawLatex(0.14, 0.92, moreText)
+
+    if useLogX:
+        canvas.SetLogx()
+    if useLogY:
+        canvas.SetLogy()
+
+    for ext in ["png","pdf"]:
+        canvas.SaveAs(f"{outputdir}/{canvasName}.{ext}")
+
+    # restore original version after savign plot
+    if useLogX:
+        canvas.SetLogx(0)
+    if useLogY:
+        canvas.SetLogy(0)
+

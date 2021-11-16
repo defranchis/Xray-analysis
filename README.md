@@ -22,7 +22,20 @@ cd xRayAnalysis
 git remote add origin git@github.com:$YOUR_GITHUB_REPOSITORY/Xray-analysis.git
 ```
 
-### Examples
+### Run the code
+
+A new version was developed during November 2021, based on __makeXrayStudy.py__
+Example:
+```
+python3 makeXrayStudy.py -o <outputdir> -c configs_Nov2021/
+```
+There are options to customize some features, like samples to use, structures (e.g. if you only want to run on the GCD) and so on.
+More features are work in progress.
+There are still some hardcoded parts to adjust plots for specific dose steps in order to get a sensible measurement. 
+At some point one will need a better algorithm, although some manual customization using extenral configuration files may be require (to be passed using __-c__)
+
+
+### Examples for older version of the code (obsolete)
 
 Testing some options to customize output
 ```
@@ -33,5 +46,6 @@ For annealing studies, use a command like the following
 ```
 python3 fitVfb.py -o /some/output/folder/on/eos/MOShalf/ --skip GCD --samples 1011_LR -a --annealing-path-regexp "1011_LR_ann_60min_60C_MOShalf_20C.*"
 ```
+
 
 

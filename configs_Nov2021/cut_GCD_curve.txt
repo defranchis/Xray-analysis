@@ -1,0 +1,23 @@
+# comments with '#'
+# values separated by '&'
+
+# config for cutting GCD curves (low/high) and to set GCD range (min/max)
+# please use -999 if no value is needed
+# please use '+' for >= dose (e.g. 70+), or '-' for <= dose
+# values min/max are optional. but, if used, they must both be set!
+
+# sample, dose, low, high, min, max
+N4791-1_LR  &   1  &   -2 & 28
+N4791-1_LR  &  10  &   10 & 45
+N4791-1_LR  &  20  &    5 & 65
+N4791-1_LR  &  70  &    0 & 80
+N4791-1_LR  & 100  &    0 & 80
+N4791-1_LR  & 200  &    0 & 80
+#
+N4790-1_UL  &   1  &   10 & -999
+N4790-1_UL  &   2  &   -4 & 16
+N4790-1_UL  &   5  &   14 & 40
+N4790-1_UL  &  40  &   10 & -999
+N4790-1_UL  &  70  &    0 & 80
+N4790-1_UL  & 100  &    0 & 80
+N4790-1_UL  & 200  &    0 & 80
