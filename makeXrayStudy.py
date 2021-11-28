@@ -40,10 +40,15 @@ class siliconSensorSample:
         #self.graphs = dict.fromkeys(self.structures, None) # will have a graph per structure
         self.graphsVsDose = {s : None for s in self.structures} # will have a graph per structure, with Vfb vs dose
         self.graphsSingleDose = {s : {d: None for d in self.doses[s]} for s in self.structures}
+        self.MOScurrentSingleDose = {}
+        if "EPI" in self.typeName:
+            self.MOScurrentSingleDose = {s : {d: None for d in self.doses[s]} for s in self.structures if "MOS" in s}
         self.Cox = {s : None for s in self.structures if "MOS" in s} # to be filled later once graphs exist
 
         self.readData()
         self.plotData()
+        if "EPI" in self.typeName:
+            self.plotMOScurrent()
 
     def getName(self):
         return self.name
@@ -208,6 +213,7 @@ class siliconSensorSample:
                 V = []
                 meas = []
                 err = []
+                current = []
                 for line in lines:
                     if '#' in line: continue
                     data = line.split()
@@ -215,11 +221,15 @@ class siliconSensorSample:
                     if 'MOS' in structure:
                         meas.append(1.e09*float(data[-3]))
                         err.append(0)
+                        current.append(1.e06*float(data[-1])) # current in microA
                     elif 'GCD' in structure:
                         meas.append(-1.e09*float(data[2]))
                         err.append(1e09*float(data[3]))
                         
                 tge = ROOT.TGraphErrors()
+                if len(self.MOScurrentSingleDose.keys()) and "MOS" in structure:
+                    self.MOScurrentSingleDose[structure][dose] = ROOT.TGraphErrors()
+                    self.MOScurrentSingleDose[structure][dose].SetTitle(f"{self.name} {structure}; Gate voltage [-V]; MOS current [-#muA]")
                 for i, v in enumerate(V):
                     # do not read above self.GCD_maxV for GCD
                     if "GCD" in structure:
@@ -229,6 +239,8 @@ class siliconSensorSample:
                         #    print(f"{self.name}, dose={dose} kGy: meas[{v}] = {meas[i]}")
                     tge.SetPoint(i,v,meas[i])
                     tge.SetPointError(i,0,err[i])
+                    if len(self.MOScurrentSingleDose.keys()) and "MOS" in structure:
+                        self.MOScurrentSingleDose[structure][dose].SetPoint(i,v,-1.0*current[i]) # current is negative, let's make it positive
                 yTitle = "MOS capacitance [pF]" if "MOS" in structure else "Diode current [nA]"
                 #tge.SetTitle(f"{structure}; Gate voltage [-V]; {yTitle}")
                 self.graphsSingleDose[structure][dose] = tge
@@ -320,6 +332,70 @@ class siliconSensorSample:
 
         tf.Close()
 
+        return
+
+    def plotMOScurrent(self):
+
+        c = ROOT.TCanvas()
+        c.SetTickx(1)
+        c.SetTicky(1)
+        c.cd()
+        c.SetFillColor(0)
+        c.SetGrid()
+        c.SetLeftMargin(0.14)
+        c.SetRightMargin(0.06)
+        c.cd()
+
+        ROOT.gStyle.SetPalette(87)
+        for structure in self.MOScurrentSingleDose.keys():
+            minX = 0
+            maxX = 0
+            maxY = 0
+            minY = 0
+            sortedDoses = sorted(list(self.MOScurrentSingleDose[structure].keys()))
+            graphs = {d : self.MOScurrentSingleDose[structure][d] for d in sortedDoses} 
+            for dose in graphs.keys():
+                gr = graphs[dose]
+                maxX = max(maxX, gr.GetPointX(gr.GetN()-1))
+                maxY = max(maxY, gr.GetPointY(gr.GetN()-1))
+                minY = min(minY, gr.GetPointY(gr.GetN()-1))
+            maxX *= 1.1
+            maxY *= 2.0
+            minY *= 0.5
+            frame = ROOT.TH1D(f"frame_MOScurrent_{self.typeName}_{structure}", f"Sample: {self.typeName}   {structure}", 1, minX, maxX)
+            frame.SetMarkerSize(0)
+            frame.SetMarkerColor(0)
+            frame.SetLineColor(0)
+            frame.Draw()
+            frame.GetXaxis().SetTitleSize(0.05)
+            frame.GetXaxis().SetLabelSize(0.04)
+            frame.GetXaxis().SetTitleOffset(0.9)
+            frame.GetYaxis().SetTitleOffset(1.3)
+            frame.GetYaxis().SetTitleSize(0.05)
+            frame.GetYaxis().SetLabelSize(0.04)
+            frame.GetXaxis().SetTitle("Gate voltage [-V]")
+            frame.GetYaxis().SetTitle("MOS current [-#muA]")
+            frame.GetXaxis().SetRangeUser(minX,maxX)
+            frame.GetYaxis().SetRangeUser(minY,maxY)
+            frame.SetStats(0)
+            
+            leg = ROOT.TLegend(0.2,0.68,0.9,0.88)
+            leg.SetFillColorAlpha(0,0.6)
+            leg.SetBorderSize(0)
+            leg.SetNColumns(4)
+
+            for dose in graphs.keys():
+                graphs[dose].Draw("PL PLC PFC SAME")
+                leg.AddEntry(graphs[dose], f"{dose} kGy", "PLF")
+                #gr.SetLineWidth(2)
+            c.RedrawAxis("sameaxis")
+            leg.Draw("SAME")
+
+            cName = f"{self.plotdir}/MOScurrentVsDose_{self.name}_{structure}"
+            for ext in ["png", "pdf"]:
+                c.SaveAs(f"{cName}.{ext}")
+
+        c.Clear()
         return
 
     def getGCDcurrent(self, dose):

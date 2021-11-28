@@ -1448,9 +1448,9 @@ def drawGraphs(grList,
     frame = ROOT.TH1D("frame", moreText, 1, xmin, xmax)
     if useLogY:
         frame.SetBinContent(1,0.001)
-        frame.SetMarkerSize(0)
-        frame.SetMarkerColor(0)
-        frame.SetLineColor(0)
+    frame.SetMarkerSize(0)
+    frame.SetMarkerColor(0)
+    frame.SetLineColor(0)
 
     nGraphs = len(grList)
     markers = vecMarkers if len(vecMarkers) else [20 for i in range(nGraphs)]
