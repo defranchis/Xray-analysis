@@ -30,9 +30,14 @@ Example:
 python3 makeXrayStudy.py -o <outputdir> -c configs_Nov2021/
 ```
 There are options to customize some features, like samples to use, structures (e.g. if you only want to run on the GCD) and so on.
+For instance:
+```
+python3 makeXrayStudy.py -o <outputdir> -c configs_Nov2021/ --samples "N4788-9_LR" "N4789-10_UL" --structures "MOShalf" "MOS2000"
+```
+
 More features are work in progress.
 There are still some hardcoded parts to adjust plots for specific dose steps in order to get a sensible measurement. 
-At some point one will need a better algorithm, although some manual customization using extenral configuration files may be require (to be passed using __-c__)
+At some point one will need a better algorithm, although some manual customization using external configuration files may be require (to be passed using __-c__)
 
 
 ### Examples for older version of the code (obsolete)

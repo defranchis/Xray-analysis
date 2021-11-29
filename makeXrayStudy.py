@@ -239,7 +239,8 @@ class siliconSensorSample:
                         #    print(f"{self.name}, dose={dose} kGy: meas[{v}] = {meas[i]}")
                     tge.SetPoint(i,v,meas[i])
                     tge.SetPointError(i,0,err[i])
-                    if len(self.MOScurrentSingleDose.keys()) and "MOS" in structure:
+                if len(self.MOScurrentSingleDose.keys()) and "MOS" in structure:
+                    for i, v in enumerate(V):
                         self.MOScurrentSingleDose[structure][dose].SetPoint(i,v,-1.0*current[i]) # current is negative, let's make it positive
                 yTitle = "MOS capacitance [pF]" if "MOS" in structure else "Diode current [nA]"
                 #tge.SetTitle(f"{structure}; Gate voltage [-V]; {yTitle}")
@@ -354,13 +355,33 @@ class siliconSensorSample:
             minY = 0
             sortedDoses = sorted(list(self.MOScurrentSingleDose[structure].keys()))
             graphs = {d : self.MOScurrentSingleDose[structure][d] for d in sortedDoses} 
+            graphsAverage = {d : ROOT.TGraphErrors() for d in sortedDoses} 
             for dose in graphs.keys():
                 gr = graphs[dose]
-                maxX = max(maxX, gr.GetPointX(gr.GetN()-1))
-                maxY = max(maxY, gr.GetPointY(gr.GetN()-1))
-                minY = min(minY, gr.GetPointY(gr.GetN()-1))
-            maxX *= 1.1
-            maxY *= 2.0
+                # now make averages 
+                nPtsPerAverage = 10 if dose < 10 else 20
+                allXvalues = sorted(list(gr.GetX()))
+                sumY = 0.0
+                sumX = 0.0
+                nPts = 0
+                for i,x in enumerate(allXvalues):
+                    sumY += gr.Eval(x)
+                    sumX += x
+                    nPts += 1
+                    if nPts == nPtsPerAverage:
+                        graphsAverage[dose].SetPoint(graphsAverage[dose].GetN(), sumX/nPts, sumY/nPts)
+                        sumY = 0.0
+                        sumX = 0.0
+                        nPts = 0
+                if nPts > 0:
+                    graphsAverage[dose].SetPoint(graphsAverage[dose].GetN(), sumX/nPts, sumY/nPts)
+                #allYvalues = list(gr.GetY())
+                allYvalues = list(graphsAverage[dose].GetY())
+                maxX = max(maxX, graphsAverage[dose].GetPointX(graphsAverage[dose].GetN()-1))
+                maxY = max(maxY, max(allYvalues))
+                minY = min(minY, min(allYvalues))
+            maxX *= 1.05
+            maxY *= 1.8
             minY *= 0.5
             frame = ROOT.TH1D(f"frame_MOScurrent_{self.typeName}_{structure}", f"Sample: {self.typeName}   {structure}", 1, minX, maxX)
             frame.SetMarkerSize(0)
@@ -385,8 +406,10 @@ class siliconSensorSample:
             leg.SetNColumns(4)
 
             for dose in graphs.keys():
-                graphs[dose].Draw("PL PLC PFC SAME")
-                leg.AddEntry(graphs[dose], f"{dose} kGy", "PLF")
+                graphsAverage[dose].Draw("PL PLC PFC SAME")
+                leg.AddEntry(graphsAverage[dose], f"{dose} kGy", "PLF")
+                #graphs[dose].Draw("PL PLC PFC SAME")
+                #leg.AddEntry(graphs[dose], f"{dose} kGy", "PLF")
                 #gr.SetLineWidth(2)
             c.RedrawAxis("sameaxis")
             leg.Draw("SAME")
