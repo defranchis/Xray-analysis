@@ -47,8 +47,8 @@ class siliconSensorSample:
 
         self.readData()
         self.plotData()
-        if "EPI" in self.typeName:
-            self.plotMOScurrent()
+        #if "EPI" in self.typeName:
+        #    self.plotMOScurrent() # when I run this function the final summary plot with all graphs becomes white, keep commented for now until I figure out what happens
 
     def getName(self):
         return self.name
@@ -86,9 +86,11 @@ class siliconSensorSample:
         for f in folders:
             #print(f"{structure}: {f}")
             dose = str(f.split("_")[-1]).rstrip("kGy")
+            if self.options.maxDose > 0 and int(dose) > self.options.maxDose: 
+                continue
             doses.append(int(dose))
         doses = sorted(doses)
-        #print(f"{structure}: {doses}")
+        # print(f"{structure}: {doses}")
         return doses
 
     def readGCDcuts(self):
@@ -337,7 +339,7 @@ class siliconSensorSample:
 
     def plotMOScurrent(self):
 
-        c = ROOT.TCanvas()
+        c = ROOT.TCanvas("mosCurrentCanvas","")
         c.SetTickx(1)
         c.SetTicky(1)
         c.cd()
@@ -418,7 +420,7 @@ class siliconSensorSample:
             for ext in ["png", "pdf"]:
                 c.SaveAs(f"{cName}.{ext}")
 
-        c.Clear()
+        c.Clear()  # this apparently does very bad things, it deletes canvas made afterwards !
         return
 
     def getGCDcurrent(self, dose):
@@ -611,6 +613,8 @@ if __name__ == "__main__":
                         default="./allplots", help="Output folder for plots")
     parser.add_argument("-c", "--configdir", type=str, 
                         default=None, help="Folder with configuration files")
+    parser.add_argument("--max-dose", dest="maxDose", type=int, 
+                        default=-1, help="Maximum dose to use for all samples, negative means to use all")
     # samples
     parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
     #parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL'], help="List of samples to be used")
@@ -651,6 +655,8 @@ if __name__ == "__main__":
     for structure in args.structures:
         graphs = [sampleDict[sample].getGraphVsDose(structure) for sample in args.samples]
         legendEntries = [sampleDict[sample].getTypeName() for sample in args.samples]
+        #print(graphs)
+        #print(legendEntries)
         maxX = 0
         maxY = 0
         minY = 0
@@ -689,6 +695,8 @@ if __name__ == "__main__":
             legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
             useLogY = False
             minY = 0
+
+        #print(f"minX = {minX};   maxX = {maxX};   minY = {minY};   maxY = {maxY}")
         drawGraphs(graphs, f"Dose [kGy]::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}", outdirSummary, 
                    legendEntries=legendEntries, legendCoords=legCoords,
                    vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)

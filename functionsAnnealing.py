@@ -19,7 +19,8 @@ def getSampleTypeFromName(name):
                    'N4790-13_UL' : 'D FZ',
                    'N4790-13_LR' : 'D FZ #2',
                    'N4789-10_UL' : 'C EPI',
-                   'N4788-9_LR'  : 'D EPI'
+                   'N4788-9_LR'  : 'D EPI',
+                   'N4789-10_LR' : 'C EPI #2',
     }
     return sampleNames[name]
 

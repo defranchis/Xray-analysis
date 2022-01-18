@@ -1444,7 +1444,8 @@ def drawGraphs(grList,
     ymin = 0
     ymax = 0
     yAxisName,setYAxisRangeFromUser,ymin,ymax = getAxisRangeFromUser(yAxisNameTmp)
-
+    
+    #print(f"minX = {xmin};   maxX = {xmax};   minY = {ymin};   maxY = {ymax}")
     frame = ROOT.TH1D("frame", moreText, 1, xmin, xmax)
     if useLogY:
         frame.SetBinContent(1,0.001)
@@ -1491,10 +1492,20 @@ def drawGraphs(grList,
         if "EPI" in legendEntries[ig]:
             grList[ig].SetLineStyle(9)
         grList[ig].SetFillColor(vecColors[ig])
+        #grList[ig].Draw("apl" if ig == 0 else "pl same")
         grList[ig].Draw("pl same")
+        #print("Drawing graph !!!!!!!!")
         dictLegGraph[legendEntries[ig]] = grList[ig]
     for k in sorted(dictLegGraph.keys()):
         leg.AddEntry(dictLegGraph[k], k, "PL")       
+
+    # ## debug
+    # for ig,gr in enumerate(grList):
+    #     xval = list(gr.GetX())
+    #     yval = list(gr.GetY())
+    #     print(f"sample: {legendEntries[ig]}")
+    #     print(f"x = {xval}")
+    #     print(f"y = {yval}")
 
     #canvas.RedrawAxis("sameaxis")
 
@@ -1522,13 +1533,18 @@ def drawGraphs(grList,
 
     if useLogX:
         canvas.SetLogx()
+    else:
+        canvas.SetLogx(0)
+
     if useLogY:
         canvas.SetLogy()
+    else:
+        canvas.SetLogy(0)
 
-    for ext in ["png","pdf"]:
+    for ext in ["png", "pdf"]:
         canvas.SaveAs(f"{outputdir}/{canvasName}.{ext}")
 
-    # restore original version after savign plot
+    # restore original version after saving plot
     if useLogX:
         canvas.SetLogx(0)
     if useLogY:
