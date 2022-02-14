@@ -1,3 +1,6 @@
+# example
+# python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/outputTest_Jan2022_NewSampleHigherDose/ --structures 'MOShalf' 'MOS2000' --samples "N4789-10_UL" "N4788-9_LR" "N4789-10_LR" "N4789-12_UL"
+
 ## safe batch mode
 import sys
 args = sys.argv[:]
@@ -18,6 +21,23 @@ from functionsAnnealing import *
 
 import argparse
 
+def getOxideChargeDensity(V_fb, structure, C_ox):
+
+    if structure not in ['MOShalf', 'MOS2000']:
+        print(f"Error in getOxideChargeDensity, unexpected structure {structure}")
+
+    A = cnst.A_MOShalf if structure == 'MOShalf' else cnst.A_MOS2000
+
+    A *= 1E-6 # in m^2
+    C_ox -= cnst.approx_openC
+    C_ox *= 1E-12 # in F
+    phi_s = cnst.Chi + cnst.Eg/2. + cnst.KbTn20*ROOT.log(cnst.NA/cnst.ni)
+    phi_ms = cnst.phi_m - phi_s
+    N_ox = C_ox / (A*cnst.q) * (phi_ms + V_fb) # 1/m^2
+    N_ox *= 1E-04 # in 1/cm^2
+    return N_ox
+
+
 class siliconSensorSample:
     def __init__(self, name, temperature, options=None, title=None): 
         self.options = options
@@ -31,14 +51,16 @@ class siliconSensorSample:
         self.configdir = self.options.configdir
         self.plotdir = f"{self.options.outdir}/{self.typeNameGoodString}_{self.name}"
         self.GCD_cuts = []
-        self.GCD_maxV = 85.0
+        self.GCD_maxV = 85.0 # might be passed from outside
         if self.configdir:
             self.readGCDcuts()
         createPlotDirAndCopyPhp(self.plotdir)
 
-        self.doses = {s: self.getAllDoses(s) for s in self.structures}  # are the doses always the same for all structures?
+        self.subfolderPerDose = {}
+        self.doses = {s: self.getAllDoses(s) for s in self.structures} # some doses might have multiple measurements
         #self.graphs = dict.fromkeys(self.structures, None) # will have a graph per structure
-        self.graphsVsDose = {s : None for s in self.structures} # will have a graph per structure, with Vfb vs dose
+        self.graphsVsDose = {s : None for s in self.structures} # will have a graph per structure, with Vfb or GCD current vs dose
+        self.graphsVsDose_alt = {s : None for s in self.structures} # will have a graph per structure, with oxide charge density or surface velocity vs dose
         self.graphsSingleDose = {s : {d: None for d in self.doses[s]} for s in self.structures}
         self.MOScurrentSingleDose = {}
         if "EPI" in self.typeName:
@@ -47,6 +69,7 @@ class siliconSensorSample:
 
         self.readData()
         self.plotData()
+        self.makeAltGraph()
         #if "EPI" in self.typeName:
         #    self.plotMOScurrent() # when I run this function the final summary plot with all graphs becomes white, keep commented for now until I figure out what happens
 
@@ -56,19 +79,23 @@ class siliconSensorSample:
     def getTypeName(self):
         return getSampleTypeFromName(self.name)
 
-    def getGraphVsDose(self, structure):
-        return self.graphsVsDose[structure]
+    def getGraphVsDose(self, structure, alt=False):
+        return self.graphsVsDose_alt[structure] if alt else self.graphsVsDose[structure]
 
     def getGraphSingleDose(self, structure, dose):
         return self.graphsSingleDose[structure][dose]
 
 # should this be a method of siliconSensorSample?
     def getPath(self, mainpath, sample, structure, dose, temperatureFloat):
+        trueDose = self.subfolderPerDose[dose][0]
+        subfolderName = self.subfolderPerDose[dose][1]
         temperature = str(temperatureFloat).replace('-','m')
         prefix = "cv" if "MOS" in structure else "iv" if "GCD" in structure else "unknown" 
-        path = f"{mainpath}/{sample}_{temperature}C_{dose}kGy"
-        path = glob(f"{path}/*/")[-1]
-        path += f"{prefix}_{sample}_{temperature}C_{dose}kGy_{structure}.dat"
+        path = f"{mainpath}/{sample}_{temperature}C_{trueDose}kGy"
+        #path = glob(f"{path}/*/")[-1]
+        path += f"/{subfolderName}/"
+        path += f"{prefix}_{sample}_{temperature}C_{trueDose}kGy_{structure}.dat"
+        #print(f"{sample} - {dose} kGy: {path}")
         if not os.path.exists(path):
             print(f"Error: I did not find this file {path}")
             quit()
@@ -84,11 +111,18 @@ class siliconSensorSample:
         #print(folders)
         doses = []
         for f in folders:
-            #print(f"{structure}: {f}")
             dose = str(f.split("_")[-1]).rstrip("kGy")
-            if self.options.maxDose > 0 and int(dose) > self.options.maxDose: 
-                continue
-            doses.append(int(dose))
+            subfolders = [subf for subf in os.listdir(self.datapath + "/" + f)]
+            subfolders = sorted(subfolders)
+            if len(subfolders) > 1:
+                print(f"{self.name} has {len(subfolders)} folders for dose {dose}: {subfolders}")
+            for i in range(len(subfolders)):
+                #print(f"{structure}: {f}")
+                if self.options.maxDose > 0 and int(dose) > self.options.maxDose: 
+                    continue
+                doseForGraph = int(dose) + i
+                self.subfolderPerDose[doseForGraph] = [dose, subfolders[i]] # fill with true dose and subfolder name 
+                doses.append(doseForGraph) # add just 1 kGy not to overlap points
         doses = sorted(doses)
         # print(f"{structure}: {doses}")
         return doses
@@ -182,7 +216,7 @@ class siliconSensorSample:
             xL = 16.0
             xH = 45.0
 
-        xH = min(85, xH) # better not to go above about self.GCD_maxV V
+        xH = min(self.GCD_maxV, xH) # better not to go above about self.GCD_maxV V
 
         ym = +999
         yM = -999
@@ -221,7 +255,7 @@ class siliconSensorSample:
                     data = line.split()
                     V.append(-1.*float(data[0]))
                     if 'MOS' in structure:
-                        meas.append(1.e09*float(data[-3]))
+                        meas.append(1.e12*float(data[-3])) # capacitance in pF (usually order of 1e-10 F in the file)
                         err.append(0)
                         current.append(1.e06*float(data[-1])) # current in microA
                     elif 'GCD' in structure:
@@ -263,7 +297,7 @@ class siliconSensorSample:
             print(f"Warning: graph is None for {structure} and dose = {dose}")
             quit()
         Cox = max(list(tge.GetY()))
-        #print(f"Cox[{structure}] = {Cox}")
+        print(f"Cox[{structure}] = {Cox}")
         self.Cox[structure] = Cox
         return Cox
 
@@ -336,6 +370,19 @@ class siliconSensorSample:
         tf.Close()
 
         return
+
+    def makeAltGraph(self):
+        for structure in self.structures: 
+            # todo: add GCD after MOS
+            if "MOS" not in structure:
+                continue
+            self.graphsVsDose_alt[structure] = self.graphsVsDose[structure].Clone(f"{self.graphsVsDose[structure].GetName()}_alt")
+            allXvalues = list(self.graphsVsDose[structure].GetX())
+            allYvalues = list(self.graphsVsDose[structure].GetY())
+            for i,x in enumerate(allXvalues):
+                Nox = getOxideChargeDensity(allYvalues[i], structure, self.Cox[structure])
+                self.graphsVsDose_alt[structure].SetPoint(i, x, Nox)
+            self.graphsVsDose_alt[structure].GetYaxis().SetTitle("Oxide charge density [cm^{-2 }]")
 
     def plotMOScurrent(self):
 
@@ -647,13 +694,14 @@ if __name__ == "__main__":
     canvas.SetGrid()
     canvas.SetLeftMargin(0.14)
     canvas.SetRightMargin(0.06)
+    canvas.SetBottomMargin(0.12)
     canvas.cd()
 
     #typeNames = [sampleDict[sample].getTypeName() for sample in args.samples]
     #typeNames = sorted(typeNames)
 
     for structure in args.structures:
-        graphs = [sampleDict[sample].getGraphVsDose(structure) for sample in args.samples]
+        graphs = [sampleDict[sample].getGraphVsDose(structure, alt=True) for sample in args.samples]
         legendEntries = [sampleDict[sample].getTypeName() for sample in args.samples]
         #print(graphs)
         #print(legendEntries)
@@ -670,7 +718,7 @@ if __name__ == "__main__":
         if maxX > 300:
             useLogX = True
             minX = 0.5 if "GCD" in structure else 0.08
-            maxX *= 5.0
+            maxX *= 3.0
             for igr,gr in enumerate(graphs):
                 #print(f"{legendEntries[igr]}: setting minX from {gr.GetPointX(0)} to 0.1")
                 if "GCD" not in structure:
@@ -682,22 +730,24 @@ if __name__ == "__main__":
 
         canvas.SetTitle(structure)
         if "GCD" in structure:
-            yTitle = "GCD current [nA]"
+            #yTitle = "GCD current [nA]" # read from graphs directly
             minyLeg = 0.3
             maxyLeg = minyLeg + 0.06 * len(graphs)
             legCoords = f"0.2,{minyLeg},0.5,{maxyLeg}"
             useLogY = False
             #legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
         else:
-            yTitle = "Flat-band voltage [-V]"
+            #yTitle = "Flat-band voltage [-V]" # read from graphs directly
             minyLeg = 0.12
             maxyLeg = minyLeg + 0.06 * len(graphs)
             legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
             useLogY = False
             minY = 0
 
+        xTitle = graphs[0].GetXaxis().GetTitle()
+        yTitle = graphs[0].GetYaxis().GetTitle()
         #print(f"minX = {minX};   maxX = {maxX};   minY = {minY};   maxY = {maxY}")
-        drawGraphs(graphs, f"Dose [kGy]::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}", outdirSummary, 
+        drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}", outdirSummary, 
                    legendEntries=legendEntries, legendCoords=legCoords,
                    vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
     

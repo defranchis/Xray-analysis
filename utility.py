@@ -1466,6 +1466,7 @@ def drawGraphs(grList,
         canvas.SetGrid()
         canvas.SetLeftMargin(0.14)
         canvas.SetRightMargin(0.06)
+        canvas.SetBottomMargin(0.12)
         canvas.cd()
 
     nColumnsLeg = 1
@@ -1489,7 +1490,7 @@ def drawGraphs(grList,
         grList[ig].SetMarkerColor(vecColors[ig])
         grList[ig].SetLineColor(vecColors[ig])
         grList[ig].SetLineWidth(2)
-        if "EPI" in legendEntries[ig]:
+        if "#" in legendEntries[ig]:
             grList[ig].SetLineStyle(9)
         grList[ig].SetFillColor(vecColors[ig])
         #grList[ig].Draw("apl" if ig == 0 else "pl same")
@@ -1499,16 +1500,7 @@ def drawGraphs(grList,
     for k in sorted(dictLegGraph.keys()):
         leg.AddEntry(dictLegGraph[k], k, "PL")       
 
-    # ## debug
-    # for ig,gr in enumerate(grList):
-    #     xval = list(gr.GetX())
-    #     yval = list(gr.GetY())
-    #     print(f"sample: {legendEntries[ig]}")
-    #     print(f"x = {xval}")
-    #     print(f"y = {yval}")
-
-    #canvas.RedrawAxis("sameaxis")
-
+    frame.GetXaxis().SetTitleOffset(1.1)
     frame.GetXaxis().SetTitleSize(0.05)
     frame.GetXaxis().SetLabelSize(0.04)
     frame.GetYaxis().SetTitleOffset(1.3)
