@@ -1500,6 +1500,9 @@ def drawGraphs(grList,
     for k in sorted(dictLegGraph.keys()):
         leg.AddEntry(dictLegGraph[k], k, "PL")       
 
+     
+    # better to set this outside of this function
+    #ROOT.TGaxis.SetExponentOffset(-0.05, 0.00, "y") # X and Y offset for Y axis
     frame.GetXaxis().SetTitleOffset(1.1)
     frame.GetXaxis().SetTitleSize(0.05)
     frame.GetXaxis().SetLabelSize(0.04)

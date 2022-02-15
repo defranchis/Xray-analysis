@@ -45,7 +45,8 @@ def getSampleTypeFromName(name):
                    'N4788-9_LR'  : 'D EPI',
                    'N4789-10_LR' : 'C EPI #2',
                    'N4789-12_UL' : 'C EPI high dose',
-                   'N4789-12_LR' : 'C EPI low dose'
+                   'N4789-12_LR' : 'C EPI low dose',
+                   'N0538_25_LR' : 'C FZ old'
     }
     return sampleNames[name]
 

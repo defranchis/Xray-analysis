@@ -21,16 +21,25 @@ from functionsAnnealing import *
 
 import argparse
 
+
+def getSurfaceVelocity(current):
+    I = current * 1E-09 # in A from nA
+    A = cnst.A_GCD
+    A *= 1E-6 # in m^2
+    ni = cnst.ni * 1E+06 # in m^-3
+    J = I / (cnst.q*ni*A) # in m/s
+    J *= 100 # in cm/s
+    return J
+
+
 def getOxideChargeDensity(V_fb, structure, C_ox):
 
     if structure not in ['MOShalf', 'MOS2000']:
         print(f"Error in getOxideChargeDensity, unexpected structure {structure}")
-
     A = cnst.A_MOShalf if structure == 'MOShalf' else cnst.A_MOS2000
-
     A *= 1E-6 # in m^2
     C_ox -= cnst.approx_openC
-    C_ox *= 1E-12 # in F
+    C_ox *= 1E-12 # in F from pF
     phi_s = cnst.Chi + cnst.Eg/2. + cnst.KbTn20*ROOT.log(cnst.NA/cnst.ni)
     phi_ms = cnst.phi_m - phi_s
     N_ox = C_ox / (A*cnst.q) * (phi_ms + V_fb) # 1/m^2
@@ -259,7 +268,7 @@ class siliconSensorSample:
                         err.append(0)
                         current.append(1.e06*float(data[-1])) # current in microA
                     elif 'GCD' in structure:
-                        meas.append(-1.e09*float(data[2]))
+                        meas.append(-1.e09*float(data[2])) # in nA
                         err.append(1e09*float(data[3]))
                         
                 tge = ROOT.TGraphErrors()
@@ -297,7 +306,7 @@ class siliconSensorSample:
             print(f"Warning: graph is None for {structure} and dose = {dose}")
             quit()
         Cox = max(list(tge.GetY()))
-        print(f"Cox[{structure}] = {Cox}")
+        #print(f"Cox[{structure}] = {Cox}")
         self.Cox[structure] = Cox
         return Cox
 
@@ -373,16 +382,25 @@ class siliconSensorSample:
 
     def makeAltGraph(self):
         for structure in self.structures: 
-            # todo: add GCD after MOS
-            if "MOS" not in structure:
-                continue
             self.graphsVsDose_alt[structure] = self.graphsVsDose[structure].Clone(f"{self.graphsVsDose[structure].GetName()}_alt")
             allXvalues = list(self.graphsVsDose[structure].GetX())
             allYvalues = list(self.graphsVsDose[structure].GetY())
-            for i,x in enumerate(allXvalues):
-                Nox = getOxideChargeDensity(allYvalues[i], structure, self.Cox[structure])
-                self.graphsVsDose_alt[structure].SetPoint(i, x, Nox)
-            self.graphsVsDose_alt[structure].GetYaxis().SetTitle("Oxide charge density [cm^{-2 }]")
+            tmp = self.graphsVsDose_alt[structure]
+            if "MOS" in structure:
+                for i,x in enumerate(allXvalues):
+                    Vfb = allYvalues[i]
+                    Nox = getOxideChargeDensity(Vfb, structure, self.Cox[structure])
+                    tmp.SetPoint(i, x, Nox)
+                    tmp.SetPointError(i, self.graphsVsDose[structure].GetErrorX(i), self.graphsVsDose[structure].GetErrorY(i) * Nox / Vfb)
+                tmp.GetYaxis().SetTitle("Oxide charge density [cm^{-2 }]")
+            else:
+                for i,x in enumerate(allXvalues):
+                    current = allYvalues[i]
+                    surfV = getSurfaceVelocity(current)
+                    tmp.SetPoint(i, x, surfV)
+                    tmp.SetPointError(i, self.graphsVsDose[structure].GetErrorX(i), self.graphsVsDose[structure].GetErrorY(i) * surfV / current)
+                tmp.GetYaxis().SetTitle("Surface velocity [cm/s]")
+        return
 
     def plotMOScurrent(self):
 
@@ -666,12 +684,13 @@ if __name__ == "__main__":
     parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
     #parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL'], help="List of samples to be used")
     parser.add_argument("--structures", nargs="+", default=['MOShalf','MOS2000','GCD'], help="List of structures to use")
+    parser.add_argument("--compare-old-sample", dest="compareOldSample", action="store_true", default=False, help="Add comparison to an older sample (graphs read from root files directly)")
     args = parser.parse_args()
 
     ROOT.TH1.SetDefaultSumw2()
 
     print()
-    print(f"Analysing {len(args.samples)} samples")
+    print(f"Analysing {len(args.samples)} samples: {args.samples}")
     print(f"Analysing these structures: {args.structures}")
     print()
 
@@ -697,70 +716,89 @@ if __name__ == "__main__":
     canvas.SetBottomMargin(0.12)
     canvas.cd()
 
-    #typeNames = [sampleDict[sample].getTypeName() for sample in args.samples]
-    #typeNames = sorted(typeNames)
-
-    for structure in args.structures:
-        graphs = [sampleDict[sample].getGraphVsDose(structure, alt=True) for sample in args.samples]
-        legendEntries = [sampleDict[sample].getTypeName() for sample in args.samples]
-        #print(graphs)
-        #print(legendEntries)
-        maxX = 0
-        maxY = 0
-        minY = 0
-        for gr in graphs:
-            maxX = max(maxX, gr.GetPointX(gr.GetN()-1))
-            maxY = max(maxY, gr.GetPointY(gr.GetN()-1))
-            minY = min(minY, gr.GetPointY(gr.GetN()-1))
-        maxY *= 1.1
-        minX = -20
-        useLogX = False
-        if maxX > 300:
-            useLogX = True
-            minX = 0.5 if "GCD" in structure else 0.08
-            maxX *= 3.0
-            for igr,gr in enumerate(graphs):
-                #print(f"{legendEntries[igr]}: setting minX from {gr.GetPointX(0)} to 0.1")
-                if "GCD" not in structure:
-                    # for GCD we already removed the point at dose=0
-                    gr.SetPointX(0, 0.1)
-
-        else:
-            maxX *= 1.1
-
-        canvas.SetTitle(structure)
-        if "GCD" in structure:
-            #yTitle = "GCD current [nA]" # read from graphs directly
-            minyLeg = 0.3
-            maxyLeg = minyLeg + 0.06 * len(graphs)
-            legCoords = f"0.2,{minyLeg},0.5,{maxyLeg}"
-            useLogY = False
-            #legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
-        else:
-            #yTitle = "Flat-band voltage [-V]" # read from graphs directly
-            minyLeg = 0.12
-            maxyLeg = minyLeg + 0.06 * len(graphs)
-            legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
-            useLogY = False
+    # repeat twice to make graphs having Vfb (GCD current) or oxide charge density (surface velocity) on the y axis
+    for ivar in range(2):
+        altGraph = True if ivar == 0 else False
+        for structure in args.structures:
+            graphs = [sampleDict[sample].getGraphVsDose(structure, alt=altGraph) for sample in args.samples]
+            legendEntries = [sampleDict[sample].getTypeName() for sample in args.samples]
+            #
+            # get some graphs already available from external files
+            # at some point I should make this inclusion a little less hardcoded
+            if args.compareOldSample:
+                sampleExt = "N0538_25_LR"
+                tf = safeOpenFile(f"tmpRootFiles/dose_{sampleExt}_{structure}.root")
+                objname = None
+                if "MOS" in structure:
+                    objname = "gNox" if altGraph else "gVfb"
+                else:
+                    objname = "gJ" if altGraph else "gI"
+                graphExt = safeGetObject(tf, objname, detach=False)
+                tf.Close()
+                graphs.append(graphExt)
+                legendEntries.append(getSampleTypeFromName(sampleExt))
+            #
+            #
+            #print(graphs)
+            #print(legendEntries)
+            maxX = 0
+            maxY = 0
             minY = 0
+            for gr in graphs:
+                maxX = max(maxX, gr.GetPointX(gr.GetN()-1))
+                maxY = max(maxY, gr.GetPointY(gr.GetN()-1))
+                minY = min(minY, gr.GetPointY(gr.GetN()-1))
+            maxY *= 1.1
+            minX = -20
+            useLogX = False
+            if maxX > 300:
+                useLogX = True
+                minX = 0.5 if "GCD" in structure else 0.08
+                maxX *= 3.0
+                for igr,gr in enumerate(graphs):
+                    #print(f"{legendEntries[igr]}: setting minX from {gr.GetPointX(0)} to 0.1")
+                    if "GCD" not in structure:
+                        # for GCD we already removed the point at dose=0
+                        gr.SetPointX(0, 0.1)
 
-        xTitle = graphs[0].GetXaxis().GetTitle()
-        yTitle = graphs[0].GetYaxis().GetTitle()
-        #print(f"minX = {minX};   maxX = {maxX};   minY = {minY};   maxY = {maxY}")
-        drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}", outdirSummary, 
-                   legendEntries=legendEntries, legendCoords=legCoords,
-                   vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
-    
-        if "GCD" in structure:
-            # repeat with log scale on Y axis too
-            useLogY = True
-            minyLeg = 0.12
-            maxyLeg = minyLeg + 0.06 * len(graphs)
-            legCoords = f"0.70,{minyLeg},0.95,{maxyLeg}"
-            maxY *= 3.0
-            minY = max(0.01,minY)
-            drawGraphs(graphs, f"Dose [kGy]::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}_logY", outdirSummary, 
+            else:
+                maxX *= 1.1
+
+            canvas.SetTitle(structure)
+            if "GCD" in structure:
+                #yTitle = "GCD current [nA]" # read from graphs directly
+                minyLeg = 0.3
+                maxyLeg = minyLeg + 0.06 * len(graphs)
+                legCoords = f"0.2,{minyLeg},0.5,{maxyLeg}"
+                useLogY = False
+                #legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
+            else:
+                #yTitle = "Flat-band voltage [-V]" # read from graphs directly
+                minyLeg = 0.12
+                maxyLeg = minyLeg + 0.06 * len(graphs)
+                legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
+                useLogY = False
+                minY = 0
+
+            xTitle = graphs[0].GetXaxis().GetTitle()
+            yTitle = graphs[0].GetYaxis().GetTitle()
+            #print(f"minX = {minX};   maxX = {maxX};   minY = {minY};   maxY = {maxY}")
+            postfix = "_alt" if altGraph else ""
+            ROOT.TGaxis.SetExponentOffset(-0.06, 0.00, "y") # X and Y offset for Y axis
+            drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}", outdirSummary, 
                        legendEntries=legendEntries, legendCoords=legCoords,
                        vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
+
+            # repeat with log scale on Y axis too
+            if "GCD" in structure:
+                useLogY = True
+                minyLeg = 0.12
+                maxyLeg = minyLeg + 0.06 * len(graphs)
+                legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
+                maxY *= 3.0
+                minY = max(0.05, 0.5 * minY)
+                drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}_logY", outdirSummary, 
+                           legendEntries=legendEntries, legendCoords=legCoords,
+                           vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
 
 
