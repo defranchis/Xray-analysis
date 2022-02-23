@@ -53,7 +53,7 @@ class siliconSensorSample:
         self.options = options
         self.name = name
         self.typeName = self.getTypeName()
-        self.typeNameGoodString = self.typeName.replace(' ','_').replace('#','v') 
+        self.typeNameGoodString = self.typeName.replace(' ','_').replace('#','v').replace('/','_') 
         self.title = name if title == None else title
         self.datapath = self.options.indir # usually /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/logs_obelix_setup/
         self.temperature = temperature # temperature for measurement, usually -20 C
@@ -92,7 +92,8 @@ class siliconSensorSample:
         return self.name
 
     def getTypeName(self):
-        return getSampleTypeFromName(self.name)
+        #return getSampleTypeFromName(self.name)
+        return sast.getSampleAttribute(self.name, "leg")
 
     def getPlotStyle(self, key):
         return self.plotStyle[key]
@@ -730,9 +731,9 @@ if __name__ == "__main__":
     elif args.samples == ["allC"]:
         samples = list(filter(lambda x: "C " in sast.getSampleAttribute(x, "leg"), allSamples))
     elif args.samples == ["allCnoDose"]:
-        samples = list(filter(lambda x: "C " in sast.getSampleAttribute(x, "leg") and "dose" not in sast.getSampleAttribute(x, "leg"), allSamples))
+        samples = list(filter(lambda x: "C " in sast.getSampleAttribute(x, "leg") and not any(y in sast.getSampleAttribute(x, "leg") for y in ["7 kGy", "39 kGy"]), allSamples))
     elif args.samples == ["CandDose"]:
-        samples = list(filter(lambda x: "C EPI" == sast.getSampleAttribute(x, "leg") or "dose" in sast.getSampleAttribute(x, "leg"), allSamples))
+        samples = list(filter(lambda x: "C EPI" == sast.getSampleAttribute(x, "leg") or "kGy" in sast.getSampleAttribute(x, "leg"), allSamples))
     else:
         sample = args.samples
     
@@ -841,20 +842,25 @@ if __name__ == "__main__":
             useLogX = True
             maxX *= 3.0
         
+            legWidth = 0.5 if args.samples == ["CandDose"] else 0.3
             canvas.SetTitle(structure)
             minX = 0.8
             if "GCD" in structure:
                 #yTitle = "GCD current [nA]" # read from graphs directly
                 minyLeg = 0.3
                 maxyLeg = minyLeg + 0.06 * len(graphs)
-                legCoords = f"0.2,{minyLeg},0.5,{maxyLeg}"
+                maxxleg = 0.7
+                minxleg = maxxleg - legWidth
+                legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 useLogY = False
                 #legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
             else:
                 #yTitle = "Flat-band voltage [-V]" # read from graphs directly
                 minyLeg = 0.12
                 maxyLeg = minyLeg + 0.06 * len(graphs)
-                legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
+                maxxleg = 0.9
+                minxleg = maxxleg - legWidth
+                legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 useLogY = False
                 minY = 0
 
@@ -885,9 +891,11 @@ if __name__ == "__main__":
                 minYratio -= 0.5 * diffY
                 minYratio = max(0.0, minYratio)
                 maxYratio += 1.5 * diffY
-                maxyLeg = 0.9
+                maxyLeg = 0.89
                 minyLeg = maxyLeg - 0.06 * len(graphs)
-                legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
+                maxxleg = 0.9
+                minxleg = maxxleg - legWidth
+                legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 yRatioTitle = str(yTitle.split("[")[0]) + f"ratio over {sampleDict[args.addRatio].getTypeName()}"
                 drawGraphs(ratioGraphs, f"{xTitle}::{minX},{maxXratio}", f"{yRatioTitle}::{minYratio},{maxYratio}", f"summaryVsDose_compareSamples_{structure}{postfix}_ratio", outdirSummary, 
                            legendEntries=legendEntries, legendCoords=legCoords,
@@ -900,7 +908,9 @@ if __name__ == "__main__":
                 useLogY = True
                 minyLeg = 0.12
                 maxyLeg = minyLeg + 0.06 * len(graphs)
-                legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
+                maxxleg = 0.95
+                minxleg = maxxleg - legWidth
+                legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 maxY *= 1.5 # 3.0
                 minY = 0.8 * minY
                 drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}_logY", outdirSummary, 
