@@ -16,6 +16,7 @@ from utility import *
 from glob import glob
 import os
 import constants as cnst
+import sampleStyle as sast
 
 from functionsAnnealing import *
 
@@ -48,7 +49,7 @@ def getOxideChargeDensity(V_fb, structure, C_ox):
 
 
 class siliconSensorSample:
-    def __init__(self, name, temperature, options=None, title=None): 
+    def __init__(self, name, temperature, options=None, title=None, noGCD=False): 
         self.options = options
         self.name = name
         self.typeName = self.getTypeName()
@@ -56,7 +57,7 @@ class siliconSensorSample:
         self.title = name if title == None else title
         self.datapath = self.options.indir # usually /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/logs_obelix_setup/
         self.temperature = temperature # temperature for measurement, usually -20 C
-        self.structures = self.options.structures # usuallly ['MOShalf','MOS2000', 'GCD']
+        self.structures = list(filter(lambda s: s != "GCD" or not noGCD, self.options.structures)) # usuallly ['MOShalf','MOS2000', 'GCD']
         self.configdir = self.options.configdir
         self.plotdir = f"{self.options.outdir}/{self.typeNameGoodString}_{self.name}"
         self.GCD_cuts = []
@@ -79,6 +80,11 @@ class siliconSensorSample:
         self.readData()
         self.plotData()
         self.makeAltGraph()
+        self.plotStyle = {"lc" : ROOT.kBlack, #line color
+                          "lw" : 2,           # line width                          
+                          "ls" : 1,           # line style
+                          "ms" : 20,          # marker style 
+                      }
         #if "EPI" in self.typeName:
         #    self.plotMOScurrent() # when I run this function the final summary plot with all graphs becomes white, keep commented for now until I figure out what happens
 
@@ -88,13 +94,18 @@ class siliconSensorSample:
     def getTypeName(self):
         return getSampleTypeFromName(self.name)
 
+    def getPlotStyle(self, key):
+        return self.plotStyle[key]
+
+    def setPlotStyle(self, key, val):
+        self.plotStyle[key] = val
+
     def getGraphVsDose(self, structure, alt=False):
         return self.graphsVsDose_alt[structure] if alt else self.graphsVsDose[structure]
 
     def getGraphSingleDose(self, structure, dose):
         return self.graphsSingleDose[structure][dose]
 
-# should this be a method of siliconSensorSample?
     def getPath(self, mainpath, sample, structure, dose, temperatureFloat):
         trueDose = self.subfolderPerDose[dose][0]
         subfolderName = self.subfolderPerDose[dose][1]
@@ -124,12 +135,15 @@ class siliconSensorSample:
             subfolders = [subf for subf in os.listdir(self.datapath + "/" + f)]
             subfolders = sorted(subfolders)
             if len(subfolders) > 1:
-                print(f"{self.name} has {len(subfolders)} folders for dose {dose}: {subfolders}")
+                print(f"{self.name} {structure} has {len(subfolders)} folders for dose {dose}: {subfolders}")
+                if self.options.addRatio:
+                    print(f"I will only use the first one because I have to make ratios with other graphs")
+                    subfolders = [subfolders[0]] # need only a single folder, let's use the first measurement
             for i in range(len(subfolders)):
                 #print(f"{structure}: {f}")
                 if self.options.maxDose > 0 and int(dose) > self.options.maxDose: 
                     continue
-                doseForGraph = int(dose) + i
+                doseForGraph = int(dose) + 0.01 * i
                 self.subfolderPerDose[doseForGraph] = [dose, subfolders[i]] # fill with true dose and subfolder name 
                 doses.append(doseForGraph) # add just 1 kGy not to overlap points
         doses = sorted(doses)
@@ -331,6 +345,9 @@ class siliconSensorSample:
             tgeVsDose = ROOT.TGraphErrors()
             tgeVsDose.SetName(f"{self.name}_{structure}")
             for dose in self.doses[structure]:
+                # do not fill graphs vs dose at dose = 0, this value is not interesting
+                if dose < 1.0:
+                    continue 
                 # check if maximum voltage was already reached at this dose, in that case the graph is not reliable
                 # for MOS will evaluate maxY wrt Cox, which should be the expected maximum capacitance to be reached
                 # if the maxY is below Cox by more than 5% of the difference between Cox and minY 
@@ -348,9 +365,8 @@ class siliconSensorSample:
                 else:
                     [current, err] = self.getGCDcurrent(dose)
                     # do not use the point for dose = 0 for GCD
-                    if dose:
-                        tgeVsDose.SetPoint(tgeVsDose.GetN(), dose, current)
-                        tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, err)
+                    tgeVsDose.SetPoint(tgeVsDose.GetN(), dose, current)
+                    tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, err)
                     # for surface velocity, but not needed for now
                     #J = self.calculate_GCD_parameters(current)                    
                     #tgeVsDose.SetPoint(tgeVsDose.GetN(), dose, J)
@@ -682,25 +698,60 @@ if __name__ == "__main__":
                         default=-1, help="Maximum dose to use for all samples, negative means to use all")
     # samples
     parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
+    parser.add_argument("--xs", "--exclude-samples-GCD", dest="excludeSamplesGCD", nargs="*", default=['N4789-12_UL'], help="List of samples to be excluded for GCD")
     #parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL'], help="List of samples to be used")
     parser.add_argument("--structures", nargs="+", default=['MOShalf','MOS2000','GCD'], help="List of structures to use")
     parser.add_argument("--compare-old-sample", dest="compareOldSample", action="store_true", default=False, help="Add comparison to an older sample (graphs read from root files directly)")
+    parser.add_argument("-r", "--add-ratio", dest="addRatio", type=str, 
+                        default=None, help="Add ratio plots using the sample passed here at denominator")
+    parser.add_argument("--remove-large-ratio", dest="removeLargeRatio", type=float, 
+                        default=-1, help="If positive, when a ratio would be above this value the dot is removed from the ratio plot")
     args = parser.parse_args()
 
     ROOT.TH1.SetDefaultSumw2()
 
+    allSamples = sast.getSampleNames()
+    samples = []
+    # just a bunch of hardcoded sets of sensors to access them more easily, hopefully just a temporary solution until I find a more intelligent way
+    if args.samples == ["FZ"]:
+        samples = [x for x in allSamples if "FZ" in sast.getSampleAttribute(x, "leg")]
+    elif args.samples == ["FZnor"]:
+        samples = [x for x in allSamples if "FZ" in sast.getSampleAttribute(x, "leg") and "#" not in sast.getSampleAttribute(x, "leg")]
+    elif args.samples == ["EPI"]:
+        samples = [x for x in allSamples if "EPI" in sast.getSampleAttribute(x, "leg")]
+    elif args.samples == ["EPInor"]:
+        samples = [x for x in allSamples if "EPI" in sast.getSampleAttribute(x, "leg") and "#" not in sast.getSampleAttribute(x, "leg")]
+    elif args.samples == ["FZandEPI"]:
+        samples = list(filter(lambda x: any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
+    elif args.samples == ["FZandEPInor"]:
+        samples = list(filter(lambda x: all(y not in sast.getSampleAttribute(x, "leg") for y in ["dose", "#"]) and any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
+    elif args.samples == ["FZandEPInorAndDose"]:
+        samples = list(filter(lambda x: "#" not in sast.getSampleAttribute(x, "leg") and any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
+    elif args.samples == ["allC"]:
+        samples = list(filter(lambda x: "C " in sast.getSampleAttribute(x, "leg"), allSamples))
+    elif args.samples == ["allCnoDose"]:
+        samples = list(filter(lambda x: "C " in sast.getSampleAttribute(x, "leg") and "dose" not in sast.getSampleAttribute(x, "leg"), allSamples))
+    elif args.samples == ["CandDose"]:
+        samples = list(filter(lambda x: "C EPI" == sast.getSampleAttribute(x, "leg") or "dose" in sast.getSampleAttribute(x, "leg"), allSamples))
+    else:
+        sample = args.samples
+    
+    samplesGCD = list(filter(lambda a: a not in args.excludeSamplesGCD, samples)) # might need to make it per sample, usually it is only for the GCD
+
     print()
-    print(f"Analysing {len(args.samples)} samples: {args.samples}")
     print(f"Analysing these structures: {args.structures}")
+    print(f"Analysing {len(samples)} samples: {samples}")
+    if len(samplesGCD) < len(samples):
+        print(f">>> Excluding these for GCD: {args.excludeSamplesGCD}")
     print()
 
     sampleDict = {}
-    for sample in args.samples:
-        #sampleDict[sample] = siliconSensorSample("N4790-1_UL", args.indir, -20 , plotdir=args.outdir, goodStructures = ['MOShalf','MOS2000'])
-        sampleDict[sample] = siliconSensorSample(sample, -20, options=args) #['MOShalf','MOS2000'])
-
-    colors = [ROOT.kBlack, ROOT.kRed+2, ROOT.kBlue, ROOT.kGreen+2, ROOT.kOrange+2, ROOT.kPink+2, ROOT.kAzure+2, ROOT.kGray+2, ROOT.kSpring+9]
-    markers = [ROOT.kFullCircle, ROOT.kOpenCircle, ROOT.kFullTriangleDown, ROOT.kOpenTriangleDown , ROOT.kFullSquare, ROOT.kFullTriangleUp, ROOT.kOpenSquare, ROOT.kOpenSquare, ROOT.kOpenTriangleUp, ROOT.kOpenSquareDiagonal]
+    for sample in samples:        
+        sampleDict[sample] = siliconSensorSample(sample, -20, options=args, noGCD=(sample not in samplesGCD))
+        sampleDict[sample].setPlotStyle("lc", sast.getSampleAttribute(sample, "lc"))
+        sampleDict[sample].setPlotStyle("ms", sast.getSampleAttribute(sample, "ms"))
+        sampleDict[sample].setPlotStyle("ls", sast.getSampleAttribute(sample, "ls"))
+        sampleDict[sample].setPlotStyle("lw", sast.getSampleAttribute(sample, "lw"))
     
     outdirSummary = f"{args.outdir}/summary/"
     createPlotDirAndCopyPhp(outdirSummary)
@@ -720,8 +771,22 @@ if __name__ == "__main__":
     for ivar in range(2):
         altGraph = True if ivar == 0 else False
         for structure in args.structures:
-            graphs = [sampleDict[sample].getGraphVsDose(structure, alt=altGraph) for sample in args.samples]
-            legendEntries = [sampleDict[sample].getTypeName() for sample in args.samples]
+            colors = []
+            markers = []
+            lineStyles = []
+            lineWidths = []
+            graphs = []
+            legendEntries = []
+            ratioGraphs = []
+            for sample in samples:                
+                if structure == "GCD" and sample not in samplesGCD: 
+                    continue
+                graphs.append(        sampleDict[sample].getGraphVsDose(structure, alt=altGraph) )
+                legendEntries.append( sampleDict[sample].getTypeName() )
+                colors.append(        sampleDict[sample].getPlotStyle("lc") )
+                markers.append(       sampleDict[sample].getPlotStyle("ms") )
+                lineStyles.append(    sampleDict[sample].getPlotStyle("ls") )
+                lineWidths.append(    sampleDict[sample].getPlotStyle("lw") )
             #
             # get some graphs already available from external files
             # at some point I should make this inclusion a little less hardcoded
@@ -737,34 +802,47 @@ if __name__ == "__main__":
                 tf.Close()
                 graphs.append(graphExt)
                 legendEntries.append(getSampleTypeFromName(sampleExt))
-            #
+                colors.append(ROOT.kCyan)
+                markers.append(20)
+                lineStyles.append(1)
+                lineWidths.append(2)
             #
             #print(graphs)
             #print(legendEntries)
+            if args.addRatio:
+                den = sampleDict[args.addRatio].getGraphVsDose(structure, alt=altGraph).Clone("den")
+                #print([den.GetPointX(i) for i in range(den.GetN())])
+                #print([den.GetPointY(i) for i in range(den.GetN())])
+                for gr in graphs:
+                    ratioGraphs.append(ROOT.TGraphErrors())
+                    rg = ratioGraphs[-1]
+                    rg.SetName(f"{gr.GetName()}_ratio")
+                    for i in range(den.GetN()):
+                        if den.GetPointX(i) == 0.0: # for ratios can exclude the points at dose = 0, since the measured values (e.g. Vfb for MOS) only depends on the sensor production process
+                            continue
+                        xval = den.GetPointX(i)
+                        if xval > gr.GetPointX(gr.GetN()-1):
+                            continue
+                        ratio = gr.Eval(xval, 0, "S") / den.GetPointY(i)
+                        # do not add dots with weird ratios, might just be bad measurements (usually it happens for dose = 0, but we remove it anyway)
+                        if args.removeLargeRatio < 0.0 or ratio < args.removeLargeRatio:
+                            rg.SetPoint(i, xval, ratio)
+
+            # ranges for standard graphs (minX should be the same as for standard graphs)
             maxX = 0
             maxY = 0
             minY = 0
-            for gr in graphs:
+            for igr,gr in enumerate(graphs):
                 maxX = max(maxX, gr.GetPointX(gr.GetN()-1))
-                maxY = max(maxY, gr.GetPointY(gr.GetN()-1))
-                minY = min(minY, gr.GetPointY(gr.GetN()-1))
+                allY = list(gr.GetY())
+                maxY = max(allY) if igr == 0 else max(maxY, max(allY))
+                minY = min(allY) if igr == 0 else min(minY, min(allY))
             maxY *= 1.1
-            minX = -20
-            useLogX = False
-            if maxX > 300:
-                useLogX = True
-                minX = 0.5 if "GCD" in structure else 0.08
-                maxX *= 3.0
-                for igr,gr in enumerate(graphs):
-                    #print(f"{legendEntries[igr]}: setting minX from {gr.GetPointX(0)} to 0.1")
-                    if "GCD" not in structure:
-                        # for GCD we already removed the point at dose=0
-                        gr.SetPointX(0, 0.1)
-
-            else:
-                maxX *= 1.1
-
+            useLogX = True
+            maxX *= 3.0
+        
             canvas.SetTitle(structure)
+            minX = 0.8
             if "GCD" in structure:
                 #yTitle = "GCD current [nA]" # read from graphs directly
                 minyLeg = 0.3
@@ -787,7 +865,35 @@ if __name__ == "__main__":
             ROOT.TGaxis.SetExponentOffset(-0.06, 0.00, "y") # X and Y offset for Y axis
             drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}", outdirSummary, 
                        legendEntries=legendEntries, legendCoords=legCoords,
-                       vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
+                       vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths,
+                       passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
+
+            if len(ratioGraphs):
+                # ranges for ratios if any
+                maxXratio = 0
+                maxYratio = 0
+                minYratio = 0
+                for igr,gr in enumerate(ratioGraphs):
+                    allY = list(gr.GetY())
+                    maxXratio = max(maxXratio, gr.GetPointX(gr.GetN()-1))
+                    maxYratio = max(allY) if igr == 0 else max(maxYratio, max(allY))
+                    minYratio = min(allY) if igr == 0 else min(minYratio, min(allY))
+                maxXratio *= 3.0
+                #maxYratio *= 2.0 if "GCD" in structure else 1.8
+                #minYratio *= 0.9
+                diffY = maxYratio - minYratio
+                minYratio -= 0.5 * diffY
+                minYratio = max(0.0, minYratio)
+                maxYratio += 1.5 * diffY
+                maxyLeg = 0.9
+                minyLeg = maxyLeg - 0.06 * len(graphs)
+                legCoords = f"0.6,{minyLeg},0.9,{maxyLeg}"
+                yRatioTitle = str(yTitle.split("[")[0]) + f"ratio over {sampleDict[args.addRatio].getTypeName()}"
+                drawGraphs(ratioGraphs, f"{xTitle}::{minX},{maxXratio}", f"{yRatioTitle}::{minYratio},{maxYratio}", f"summaryVsDose_compareSamples_{structure}{postfix}_ratio", outdirSummary, 
+                           legendEntries=legendEntries, legendCoords=legCoords,
+                           vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths,
+                           passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
+
 
             # repeat with log scale on Y axis too
             if "GCD" in structure:
@@ -795,10 +901,10 @@ if __name__ == "__main__":
                 minyLeg = 0.12
                 maxyLeg = minyLeg + 0.06 * len(graphs)
                 legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
-                maxY *= 3.0
-                minY = max(0.05, 0.5 * minY)
+                maxY *= 1.5 # 3.0
+                minY = 0.8 * minY
                 drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}_logY", outdirSummary, 
                            legendEntries=legendEntries, legendCoords=legCoords,
-                           vecColors=colors, vecMarkers=markers, passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
-
+                           vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths, 
+                           passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
 

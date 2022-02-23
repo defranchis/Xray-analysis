@@ -10,29 +10,6 @@ ROOT.PyConfig.IgnoreCommandLineOptions = True
 from utility import *
 import os
 
-# # leg= legend entry text
-# # lc = linecolor
-# # lw = linewidth
-# # ls = linestyle
-# # ms = markerstyle
-# sampleNames = {
-#     'N4791-1_LR'  : {'leg': 'A FZ',     'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4790-1_UL'  : {'leg': 'B FZ',     'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4790-1_LR'  : {'leg': 'B FZ #2',  'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4791-6_UL'  : {'leg': 'C FZ',     'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4791-6_LR'  : {'leg': 'C FZ #2',  'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4790-13_UL' : {'leg': 'D FZ',     'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4790-13_LR' : {'leg': 'D FZ #2',  'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4789-10_UL' : {'leg': 'C EPI',    'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4788-9_LR'  : {'leg': 'D EPI',    'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4789-10_LR' : {'leg': 'C EPI #2', 'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4789-12_UL' : {'leg': 'C EPI high dose',  'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-#     'N4789-12_LR' : {'leg': 'C EPI low dose',   'lc'  : 'ROOT.k', 'lw'  : '2', 'ls'  : '1'},
-# }
-
-# def getSampleAttribute(name, key):
-#     return sampleNames[name][key];
-
 def getSampleTypeFromName(name):
     sampleNames = {'N4791-1_LR'  : 'A FZ',
                    'N4790-1_UL'  : 'B FZ',

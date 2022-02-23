@@ -1425,7 +1425,10 @@ def drawGraphs(grList,
                legendCoords = "0.5,0.15,0.9,0.35;2", # number after ; sets the number of columns
                #lumi = None,
                vecColors = [ROOT.kBlack, ROOT.kRed, ROOT.kGreen+2, ROOT.kBlue, ROOT.kOrange+1, ROOT.kCyan+2, ROOT.kGray+2],
-               vecMarkers = [],
+               vecMarkerStyle = [],
+               vecMarkerSize = [],
+               vecLineStyle = [],
+               vecLineWidth = [],
                canvasSize="800,800",
                passCanvas=None,
                moreText="",
@@ -1454,7 +1457,10 @@ def drawGraphs(grList,
     frame.SetLineColor(0)
 
     nGraphs = len(grList)
-    markers = vecMarkers if len(vecMarkers) else [20 for i in range(nGraphs)]
+    markerStyle = vecMarkerStyle if len(vecMarkerStyle) else [20 for i in range(nGraphs)]
+    markerSize = vecMarkerSize if len(vecMarkerSize) else [1.5 for i in range(nGraphs)]
+    lineStyle = vecLineStyle if len(vecLineStyle) else [1 for i in range(nGraphs)]
+    lineWidth = vecLineWidth if len(vecLineWidth) else [2 for i in range(nGraphs)]
 
     cw,ch = canvasSize.split(',')
     canvas = passCanvas if passCanvas != None else ROOT.TCanvas("canvas","",int(cw),int(ch))
@@ -1486,12 +1492,12 @@ def drawGraphs(grList,
 
     dictLegGraph = {} # to sort legend so that entries are in alphabetic order
     for ig in range(nGraphs):
-        grList[ig].SetMarkerStyle(markers[ig])
+        grList[ig].SetMarkerStyle(markerStyle[ig])
+        grList[ig].SetMarkerSize(markerSize[ig])
         grList[ig].SetMarkerColor(vecColors[ig])
         grList[ig].SetLineColor(vecColors[ig])
-        grList[ig].SetLineWidth(2)
-        if "#" in legendEntries[ig]:
-            grList[ig].SetLineStyle(9)
+        grList[ig].SetLineWidth(lineWidth[ig])
+        grList[ig].SetLineStyle(lineStyle[ig])
         grList[ig].SetFillColor(vecColors[ig])
         #grList[ig].Draw("apl" if ig == 0 else "pl same")
         grList[ig].Draw("pl same")
