@@ -79,6 +79,13 @@ def graph_derivative(g):
         der.SetPoint(i,(g.GetPointX(i+1)+g.GetPointX(i))/2.,(g.GetPointY(i+1)-g.GetPointY(i))/(g.GetPointX(i+1)-g.GetPointX(i)))
     return der
 
+def getDerivative(tge):
+    res = ROOT.TGraphErrors()
+    res.SetName(f"{tge.GetName()}_derivative")
+    for i in range(tge.GetN()-1): # skip last point N because below we need to evaluate point N+1
+        res.SetPoint(i, 0.5*(tge.GetPointX(i+1)+tge.GetPointX(i)), (tge.GetPointY(i+1)-tge.GetPointY(i)) / (tge.GetPointX(i+1)-tge.GetPointX(i)))
+    return res
+
 def cutGraph(old):
     new = ROOT.TGraphErrors()
     X = list(old.GetX())
@@ -96,7 +103,6 @@ def cutGraph(old):
         new.SetPointError(i,EX[i],EY[i])
 
     return new
-
 
 def findX(yy,tge):
     X = list(tge.GetX())

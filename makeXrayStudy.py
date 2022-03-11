@@ -1,5 +1,9 @@
 # example
-# python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/outputTest_Jan2022_NewSampleHigherDose/ --structures 'MOShalf' 'MOS2000' --samples "N4789-10_UL" "N4788-9_LR" "N4789-10_LR" "N4789-12_UL"
+
+# python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/forMatteoAtMoriond/FZandEPI_noRepetition_TESTRATIO/ --samples 'FZandEPInor' -r 'N4789-10_UL'
+# python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/forMatteoAtMoriond/EPItypeC_andAltDose/ --samples 'CandDose' -r 'N4789-10_UL'
+# python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/forMatteoAtMoriond/allTypeC_noAltDose_testColor/ --samples 'allCnoDose' -r 'N4789-10_UL'
+# python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/forMatteoAtMoriond/onlyFZ_noRepetition/ --samples 'FZnor' -r 'N4791-6_UL'
 
 ## safe batch mode
 import sys
@@ -49,11 +53,11 @@ def getOxideChargeDensity(V_fb, structure, C_ox):
 
 
 class siliconSensorSample:
-    def __init__(self, name, temperature, options=None, title=None, noGCD=False): 
+    def __init__(self, name, temperature=None, options=None, title=None, noGCD=False): 
         self.options = options
         self.name = name
         self.typeName = self.getTypeName()
-        self.typeNameGoodString = self.typeName.replace(' ','_').replace('#','v').replace('/','_') 
+        self.typeNameGoodString = self.typeName.replace(' ','_').replace('#','v').replace('/','_').replace('(','_').replace(')','_') 
         self.title = name if title == None else title
         self.datapath = self.options.indir # usually /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/logs_obelix_setup/
         self.temperature = temperature # temperature for measurement, usually -20 C
@@ -64,7 +68,6 @@ class siliconSensorSample:
         self.GCD_maxV = 85.0 # might be passed from outside
         if self.configdir:
             self.readGCDcuts()
-        createPlotDirAndCopyPhp(self.plotdir)
 
         self.subfolderPerDose = {}
         self.doses = {s: self.getAllDoses(s) for s in self.structures} # some doses might have multiple measurements
@@ -76,15 +79,17 @@ class siliconSensorSample:
         if "EPI" in self.typeName:
             self.MOScurrentSingleDose = {s : {d: None for d in self.doses[s]} for s in self.structures if "MOS" in s}
         self.Cox = {s : None for s in self.structures if "MOS" in s} # to be filled later once graphs exist
-
-        self.readData()
-        self.plotData()
-        self.makeAltGraph()
         self.plotStyle = {"lc" : ROOT.kBlack, #line color
                           "lw" : 2,           # line width                          
                           "ls" : 1,           # line style
                           "ms" : 20,          # marker style 
                       }
+        self.readData()
+
+    def run(self):
+        createPlotDirAndCopyPhp(self.plotdir)
+        self.plotData()
+        self.makeAltGraph()
         #if "EPI" in self.typeName:
         #    self.plotMOScurrent() # when I run this function the final summary plot with all graphs becomes white, keep commented for now until I figure out what happens
 
@@ -93,7 +98,11 @@ class siliconSensorSample:
 
     def getTypeName(self):
         #return getSampleTypeFromName(self.name)
-        return sast.getSampleAttribute(self.name, "leg")
+        tmp = sast.getSampleAttribute(self.name, "leg")
+        if self.options.samples != ["CandDose"] and "C EPI 14 kGy/h" in tmp:
+            return "C EPI"
+        else:
+            return sast.getSampleAttribute(self.name, "leg")
 
     def getPlotStyle(self, key):
         return self.plotStyle[key]
@@ -124,7 +133,6 @@ class siliconSensorSample:
 
     def getAllDoses(self, structure):
         temperature = str(self.temperature).replace('-','m')
-        prefix = "cv" if "MOS" in structure else "iv" if "GCD" in structure else "unknown" 
         regexp = f"{self.name}_{temperature}C_[0-9]+kGy"
         #print(regexp)
         regMatch = re.compile(regexp)
@@ -150,6 +158,22 @@ class siliconSensorSample:
         doses = sorted(doses)
         # print(f"{structure}: {doses}")
         return doses
+
+    def getAnnealingPaths(self, structure):
+        #prefix = "cv" if "MOS" in structure else "iv" if "GCD" in structure else "unknown" 
+        regexp = f"{self.name}_.+C_[0-9]+kGy_annealingStep[0-9]+"
+        regMatch = re.compile(regexp)
+        folders = [f for f in os.listdir(self.datapath) if regMatch.match(f)]
+        annealingSteps = {} # step : timestamp(date, time)
+        for f in folders:
+            #tmpdose = int(str(f.split("kGy_")[0]).split("_")[-1])
+            annStep = str(f.split("_")[-1]).lstrip("annealingStep")
+            subfolders = str(os.listdir(self.datapath + "/" + f)[0])
+            timestamp = subfolders.split("_")[1:]
+            annealingSteps[annStep] = timestamp
+        # print(f"{structure}: {doses}")
+        return annealingSteps
+
 
     def readGCDcuts(self):
         if not self.configdir:
@@ -361,8 +385,8 @@ class siliconSensorSample:
                     # set point in graph vs dose only if the ramp up arrived close to the top 
                     if (self.Cox[structure] - maxY) < (0.15 * diff):
                         tgeVsDose.SetPoint(tgeVsDose.GetN(), dose, Vfb)
-                        #tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, deltaVfb)
-                        tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, 0) # no error on Y for now
+                        tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, deltaVfb)
+                        #tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, 0) # no error on Y for now
                 else:
                     [current, err] = self.getGCDcurrent(dose)
                     # do not use the point for dose = 0 for GCD
@@ -587,21 +611,51 @@ class siliconSensorSample:
         c.SetTickx(1)
         c.SetTicky(1)
 
+        plotnameTag = f"{self.plotdir}/fit_{self.name}_{structure}_{dose}kGy"
+        slope = getDerivative(tge)
+        slope.GetXaxis().SetTitle("Voltage [-V]")
+        slope.GetYaxis().SetTitle("#Delta C / #Delta V [pF/V]")
+        slope.GetXaxis().SetTitleSize(0.045)
+        slope.GetYaxis().SetTitleSize(0.045)
+        slope.GetYaxis().SetTitleOffset(0.99)
+        slope.SetMarkerStyle(20)
+        #slope.Draw("apl")
+        #nameNoExt = f"{plotnameTag}_firstDerivative"
+        #for ext in ["png"]:
+        #    c.SaveAs(f"{nameNoExt}.{ext}")
+
         minC = min(list(tge.GetY()))
         maxC = max(list(tge.GetY()))
         maxV = max(list(tge.GetX()))
         diff = maxC-minC
 
-        low_ramp  = findX(minC + 0.5 * diff, tge)
-        high_ramp = findX(minC + 0.9 * diff, tge)
-        # alternative fit with modified range, to estimate uncertainty on Vfb
-        low_ramp_alt  = findX(minC + 0.3 * diff, tge)
-        high_ramp_alt = findX(minC + 0.7 * diff, tge)
-        if dose == 0:
-            low_ramp  = findX(minC + 0.3 * diff, tge)
-            high_ramp = findX(minC + 0.7 * diff, tge)
-            low_ramp_alt  = findX(minC + 0.2 * diff, tge)
-            high_ramp_alt = findX(minC + 0.6 * diff, tge)
+        # get x points around which the slope graph has a maximum, which is were it mostly stabilizes
+        # this can't work if there are too few points
+        maxSlope = max(slope.GetY())
+        threshold = 0.8 * maxSlope
+        threshold_alt = 0.7 * maxSlope
+        low_ramp = 0.0
+        high_ramp = 0.0
+        low_ramp_alt = 0.0
+        high_ramp_alt = 0.0
+        xflatSlope = [slope.GetPointX(i) for i in range(slope.GetN()) if slope.GetPointY(i) > threshold]
+        if len(xflatSlope) > 3:
+            low_ramp = min(xflatSlope)
+            high_ramp = max(xflatSlope)
+            xflatSlope = [slope.GetPointX(i) for i in range(slope.GetN()) if slope.GetPointY(i) > threshold_alt]
+            low_ramp_alt = min(xflatSlope)
+            high_ramp_alt = max(xflatSlope)
+        else:
+            low_ramp  = findX(minC + 0.5 * diff, tge)
+            high_ramp = findX(minC + 0.9 * diff, tge)
+            # alternative fit with modified range, to estimate uncertainty on Vfb
+            low_ramp_alt  = findX(minC + 0.3 * diff, tge)
+            high_ramp_alt = findX(minC + 0.7 * diff, tge)
+            if dose == 0:
+               low_ramp  = findX(minC + 0.3 * diff, tge)
+               high_ramp = findX(minC + 0.7 * diff, tge)
+               low_ramp_alt  = findX(minC + 0.2 * diff, tge)
+               high_ramp_alt = findX(minC + 0.6 * diff, tge)
 
         ramp = ROOT.TF1('ramp', 'pol1(0)', low_ramp, high_ramp)
         tge.Fit(ramp, 'q', '', low_ramp, high_ramp)
@@ -611,12 +665,13 @@ class siliconSensorSample:
      
         Vfb = -1. * (ramp.GetParameter(0) - self.Cox[structure]) / ramp.GetParameter(1)
         Vfb_alt = -1. * (ramp_alt.GetParameter(0) - self.Cox[structure]) / ramp_alt.GetParameter(1)
-        deltaVfb = abs(Vfb_alt - Vfb)
+        deltaVfb = 0.5 * abs(Vfb_alt - Vfb)
+        Vfb_bestEstimate = 0.5 * (Vfb + Vfb_alt)
 
         tge.SetMarkerStyle(20)
         tge.SetMarkerSize(0.3)
-        tge.GetXaxis().SetTitle("Voltage [V]")
-        tge.GetYaxis().SetTitle("Capacitance [pF]")
+        tge.GetXaxis().SetTitle("Voltage [V-]")
+        tge.GetYaxis().SetTitle("MOS capacitance [pF]")
         tge.GetXaxis().SetTitleSize(0.045)
         tge.GetYaxis().SetTitleSize(0.045)
         tge.GetYaxis().SetTitleOffset(0.99)
@@ -631,24 +686,32 @@ class siliconSensorSample:
         ramp_ext.SetLineColor(ROOT.kBlue)
         plat_ext.SetLineColor(ROOT.kBlue)
 
+        ramp_ext_alt = ROOT.TF1('ramp_ext_alt', 'pol1(0)', high_ramp_alt, Vfb_alt+5)
+        ramp_ext_alt.SetParameters(ramp_alt.GetParameter(0), ramp_alt.GetParameter(1))
+        ramp_ext_alt.SetLineColor(ROOT.kAzure+1)
+
         ramp_ext.Draw('l same')
         plat_ext.Draw('l same')
+        ramp_ext_alt.Draw('l same')
 
-        l = ROOT.TLine(Vfb, minC, Vfb, maxC)
+        l = ROOT.TLine(Vfb, minC+0.2*diff, Vfb, maxC)
         l.SetLineColor(ROOT.kGreen+1)
         l.Draw('l same')
+        l_alt = ROOT.TLine(Vfb_alt, minC+0.2*diff, Vfb_alt, maxC)
+        l_alt.SetLineColor(ROOT.kGreen+2)
+        l_alt.Draw('l same')
 
         lat = ROOT.TLatex()
         lat.SetNDC();
         lat.SetTextFont(42)
         lat.SetTextSize(0.04)
         lat.DrawLatex(0.45, 0.2, f"dose = {dose} kGy")
-        lat.DrawLatex(0.45, 0.15, "flat-band voltage = {:0.1f} +/- {:0.1f} V".format(Vfb, deltaVfb))
+        lat.DrawLatex(0.45, 0.15, "flat-band voltage = {:0.1f} +/- {:0.1f} V".format(Vfb_bestEstimate, deltaVfb))
 
-        nameNoExt = f"{self.plotdir}/fit_{self.name}_{structure}_{dose}kGy"
+        nameNoExt = f"{plotnameTag}"
         for ext in ["png", "pdf"]:
             c.SaveAs(f"{nameNoExt}.{ext}")
-        return (Vfb, deltaVfb)
+        return (Vfb_bestEstimate, deltaVfb)
 
 
 # whatever is below this line must be rewritten most likely
@@ -690,7 +753,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--indir",  type=str, 
-                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/logs_obelix_setup/", help="Input folder")
+                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/", help="Input folder")
     parser.add_argument("-o", "--outdir", type=str, 
                         default="./allplots", help="Output folder for plots")
     parser.add_argument("-c", "--configdir", type=str, 
@@ -698,7 +761,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-dose", dest="maxDose", type=int, 
                         default=-1, help="Maximum dose to use for all samples, negative means to use all")
     # samples
-    parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
+    parser.add_argument("-s", "--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
     parser.add_argument("--xs", "--exclude-samples-GCD", dest="excludeSamplesGCD", nargs="*", default=['N4789-12_UL'], help="List of samples to be excluded for GCD")
     #parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL'], help="List of samples to be used")
     parser.add_argument("--structures", nargs="+", default=['MOShalf','MOS2000','GCD'], help="List of structures to use")
@@ -725,7 +788,7 @@ if __name__ == "__main__":
     elif args.samples == ["FZandEPI"]:
         samples = list(filter(lambda x: any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
     elif args.samples == ["FZandEPInor"]:
-        samples = list(filter(lambda x: all(y not in sast.getSampleAttribute(x, "leg") for y in ["dose", "#"]) and any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
+        samples = list(filter(lambda x: all(y not in sast.getSampleAttribute(x, "leg") for y in ["7 kGy/h", "39 kGy/h", "#"]) and any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
     elif args.samples == ["FZandEPInorAndDose"]:
         samples = list(filter(lambda x: "#" not in sast.getSampleAttribute(x, "leg") and any(y in sast.getSampleAttribute(x, "leg") for y in ["FZ", "EPI"]), allSamples))
     elif args.samples == ["allC"]:
@@ -749,6 +812,7 @@ if __name__ == "__main__":
     sampleDict = {}
     for sample in samples:        
         sampleDict[sample] = siliconSensorSample(sample, -20, options=args, noGCD=(sample not in samplesGCD))
+        sampleDict[sample].run()
         sampleDict[sample].setPlotStyle("lc", sast.getSampleAttribute(sample, "lc"))
         sampleDict[sample].setPlotStyle("ms", sast.getSampleAttribute(sample, "ms"))
         sampleDict[sample].setPlotStyle("ls", sast.getSampleAttribute(sample, "ls"))
@@ -803,7 +867,7 @@ if __name__ == "__main__":
                 tf.Close()
                 graphs.append(graphExt)
                 legendEntries.append(getSampleTypeFromName(sampleExt))
-                colors.append(ROOT.kCyan)
+                colors.append(ROOT.kCyan+1)
                 markers.append(20)
                 lineStyles.append(1)
                 lineWidths.append(2)
@@ -849,8 +913,8 @@ if __name__ == "__main__":
                 #yTitle = "GCD current [nA]" # read from graphs directly
                 minyLeg = 0.3
                 maxyLeg = minyLeg + 0.06 * len(graphs)
-                maxxleg = 0.7
-                minxleg = maxxleg - legWidth
+                minxleg = 0.2
+                maxxleg = minxleg + legWidth
                 legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 useLogY = False
                 #legCoords = f"0.65,{minyLeg},0.95,{maxyLeg}"
@@ -897,6 +961,8 @@ if __name__ == "__main__":
                 minxleg = maxxleg - legWidth
                 legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 yRatioTitle = str(yTitle.split("[")[0]) + f"ratio over {sampleDict[args.addRatio].getTypeName()}"
+                if args.samples == ["CandDose"] and "reference" in sampleDict[args.addRatio].getTypeName():
+                    yRatioTitle = str(yTitle.split("[")[0]) + f"ratio over reference"
                 drawGraphs(ratioGraphs, f"{xTitle}::{minX},{maxXratio}", f"{yRatioTitle}::{minYratio},{maxYratio}", f"summaryVsDose_compareSamples_{structure}{postfix}_ratio", outdirSummary, 
                            legendEntries=legendEntries, legendCoords=legCoords,
                            vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths,
