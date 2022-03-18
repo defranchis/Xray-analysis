@@ -99,7 +99,7 @@ class siliconSensorSample:
     def getTypeName(self):
         #return getSampleTypeFromName(self.name)
         tmp = sast.getSampleAttribute(self.name, "leg")
-        if self.options.samples != ["CandDose"] and "C EPI 14 kGy/h" in tmp:
+        if hasattr(self.options, "samples") and self.options.samples != ["CandDose"] and "C EPI 14 kGy/h" in tmp:
             return "C EPI"
         else:
             return sast.getSampleAttribute(self.name, "leg")

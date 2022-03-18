@@ -16,6 +16,7 @@ from utility import *
 
 from glob import glob
 import os
+import math
 import constants as cnst
 import sampleStyle as sast
 import datetime
@@ -23,8 +24,20 @@ import datetime
 from functionsAnnealing import *
 
 from makeXrayStudy import siliconSensorSample
+from makeXrayStudy import getOxideChargeDensity
 
 import argparse
+
+tgeTemperature = ROOT.TGraphErrors()
+tgeTemperature.SetName(f"temperature")
+def temperatureGraphForFit(x, p):
+    #return gr.Eval(x[0], 0, "S")
+    return 1./gr.Eval(x[0]) # linear interpolation sufficient
+
+
+def foo(x):
+    #return gr.Eval(x[0], 0, "S")
+    return 0.01 * x[0] # linear interpolation sufficient
 
 def getGraphFromData(datafile, structure):
 
@@ -60,7 +73,7 @@ def getGraphFromData(datafile, structure):
     tge.SetTitle(f"{structure}; Gate voltage [-V]; {yTitle}")
     return tge
 
-def fitVfb(structure, tge, Cox, outdir, step):
+def fitVfb(structure, tge, Cox, outdir, step, skipPlot=False):
 
     plotdir = f"{outdir}/fits/"
     createPlotDirAndCopyPhp(plotdir)
@@ -82,9 +95,10 @@ def fitVfb(structure, tge, Cox, outdir, step):
     slope.GetYaxis().SetTitleOffset(0.99)
     slope.SetMarkerStyle(20)
     slope.Draw("apl")
-    nameNoExt = f"{plotnameTag}_firstDerivative"
-    for ext in ["png"]:
-        c.SaveAs(f"{nameNoExt}.{ext}")
+    if not skipPlot:
+        nameNoExt = f"{plotnameTag}_firstDerivative"
+        for ext in ["png"]:
+            c.SaveAs(f"{nameNoExt}.{ext}")
 
     minC = min(list(tge.GetY()))
     maxC = max(list(tge.GetY()))
@@ -170,10 +184,11 @@ def fitVfb(structure, tge, Cox, outdir, step):
     #lat.DrawLatex(0.45, 0.2, f"dose = {dose} kGy")
     lat.DrawLatex(0.45, 0.15, "flat-band voltage = {:0.1f} +/- {:0.1f} V".format(Vfb_bestEstimate, deltaVfb))
 
-    nameNoExt = f"{plotnameTag}"
-    for ext in ["png", "pdf"]:
-        c.SaveAs(f"{nameNoExt}.{ext}")
-
+    if not skipPlot:
+        nameNoExt = f"{plotnameTag}"
+        for ext in ["png", "pdf"]:
+            c.SaveAs(f"{nameNoExt}.{ext}")
+            
     return (Vfb_bestEstimate, deltaVfb)
 
 
@@ -195,27 +210,36 @@ if __name__ == "__main__":
     parser.add_argument("--max-dose", dest="maxDose", type=int, 
                         default=0, help="Maximum dose to use for all samples, negative means to use all (usually only needs dose 0 to get Cox parameter for MOS)")
     # samples
-    parser.add_argument("-s", "--samples", nargs="+", default=['N4789-12_UL'], help="List of samples to be used")
+    parser.add_argument("-s", "--sample", type=str, default='N4789-12_UL', help="Sample to be used")
     parser.add_argument("--structures", nargs="+", default=['MOShalf','MOS2000'], help="List of structures to use")
     # others
+    parser.add_argument("--skip-points", dest="skipPoints", nargs=2, action='append', type=int, default=[], help="Points to exclude from fit and plots, passed as comma separated pair like 'in,fin'. Can specify multiple times")
     parser.add_argument("-r", "--add-ratio", dest="addRatio", type=str, 
                         default=None, help="Add ratio plots using the sample passed here at denominator")
+    parser.add_argument("--skip-plot", dest="skipPlot", action="store_true", default=False, help="Skip plots of C vs V, saves time")
+    parser.add_argument("--alt-fit", dest="doAltFit", action="store_true", default=False, help="Do alternate fits splitting points in two ranges (hardcoded inside for now)")
 
     args = parser.parse_args()
 
     ROOT.TH1.SetDefaultSumw2()
 
-    c = ROOT.TCanvas()
+    leftMargin = 0.15
+    rightMargin = 0.04
+
+    c = ROOT.TCanvas("c", "")
     c.SetFillColor(0)
     c.SetGrid()
     c.SetBottomMargin(0.12)
-    c.SetLeftMargin(0.14)
-    c.SetRightMargin(0.06)
+    c.SetLeftMargin(leftMargin)
+    c.SetRightMargin(rightMargin)
     c.SetTickx(1)
     c.SetTicky(1)
 
-    tgeTemperature = ROOT.TGraphErrors()
-    tgeTemperature.SetName(f"temperature")
+    skipPoints = args.skipPoints
+    #print(skipPoints)
+
+    #tgeTemperature = ROOT.TGraphErrors()
+    #tgeTemperature.SetName(f"temperature")
     firstTime = None
     temperatureFile = f"{args.indir}/{args.temperatureLog}"    
     with open(temperatureFile) as tf:
@@ -249,132 +273,245 @@ if __name__ == "__main__":
             tgeTemperature.SetPoint(tgeTemperature.GetN(), diffhours, float(temperature))
         
     temperatureValues = list(tgeTemperature.GetY())
+    averageTemperature = sum(temperatureValues) / len(temperatureValues)
+    averageTemperatureKelvin = averageTemperature + 273.15
     minTemp = min(temperatureValues)
     maxTemp = max(temperatureValues)
-    print(f"minTemp = {minTemp}      maxTemp = {maxTemp}")
+    print(" "*30)
+    print(f"minTemp = {minTemp}      maxTemp = {maxTemp}      aveTemp = {round(averageTemperature,1)} [C]")
+    print(" "*30)
     xmin = tgeTemperature.GetPointX(0)
     xmax = tgeTemperature.GetPointX(tgeTemperature.GetN()-1)
     deltax = xmax - xmin
 
-    for sample in args.samples:
+    sample = args.sample
 
-        # mostly to get Cox, only needs dose = 0
-        siSeSa = siliconSensorSample(sample, -20, options=args, noGCD=True)
+    # mostly to get Cox, only needs dose = 0
+    siSeSa = siliconSensorSample(sample, -20, options=args, noGCD=True)
 
-        outdir = f"{args.outdir}/{sample}/"
-        createPlotDirAndCopyPhp(outdir)
+    outdir = f"{args.outdir}/{sample}/"
+    createPlotDirAndCopyPhp(outdir)
 
-        regexp = f"{sample}_.*_[0-9]+kGy_annealingStep[0-9]+"
-        regMatch = re.compile(regexp)
-        folders = [f for f in os.listdir(args.indir) if regMatch.match(f)]
-        #print(folders)
-        #steps = sorted(list(filter(lambda x: int(x.split("_annealingStep")[-1]), folders)))
-        annealingSteps = {}
-        for f in folders:
-            annStep = int(str(f.split("_")[-1]).lstrip("annealingStep"))
-            subfolder = str(os.listdir(args.indir + "/" + f)[0])
-            timestamp = subfolder.split("_")[1:]
-            path = f"{args.indir}/{f}/{subfolder}/" 
-            annealingSteps[annStep] = {"timestamp": timestamp,
-                                       "path"     :  path}
+    regexp = f"{sample}_.*_[0-9]+kGy_annealingStep[0-9]+"
+    regMatch = re.compile(regexp)
+    folders = [f for f in os.listdir(args.indir) if regMatch.match(f)]
+    #print(folders)
+    #steps = sorted(list(filter(lambda x: int(x.split("_annealingStep")[-1]), folders)))
+    annealingSteps = {}
+    for f in folders:
+        annStep = int(str(f.split("_")[-1]).lstrip("annealingStep"))
+        subfolder = str(os.listdir(args.indir + "/" + f)[0])
+        timestamp = subfolder.split("_")[1:]
+        path = f"{args.indir}/{f}/{subfolder}/" 
+        annealingSteps[annStep] = {"timestamp": timestamp,
+                                   "path"     :  path}
+
+    for structure in args.structures:
+        tgeVsTime = ROOT.TGraphErrors()
+        tgeVsTime.SetName(f"sample_{structure}_annealing")
+        c.cd()
+        for k in sorted(annealingSteps.keys()):
+            skip = False
+            if args.lastStep >= 0 and k > args.lastStep:
+                skip = True
+            for kskip in skipPoints:
+                if k <= kskip[1] and k >= kskip[0]:
+                    skip = True
+            if skip:
+                print(f"Skipping step {k}")
+                continue
+            #print(f"{k} -> {annealingSteps[k]}")
+            datafiles = list(filter(lambda x: x.endswith(".dat"), os.listdir(annealingSteps[k]["path"])))
+            Cox = siSeSa.getCox(structure)
+            onefile = list(x for x in datafiles if structure in x)[0] 
+            datafile = annealingSteps[k]["path"] + "/" + onefile
+            #print(datafile)
+            graph = getGraphFromData(datafile, structure)
+            Vfb, deltaVfb = fitVfb(structure, graph, Cox, outdir, k, skipPlot=args.skipPlot)
+            date = annealingSteps[k]["timestamp"][0]
+            year = int(date[0:4])
+            month = int(date[4:6])
+            day = int(date[6:8])
+            time = annealingSteps[k]["timestamp"][1]
+            hour = int(time[0:2])
+            minute = int(time[2:4])
+            second = int(time[4:6])
+            thistime = datetime.datetime(year, month, day, hour, minute, second)
+            #diffminutes = (thistime - firstTime).total_seconds() / 60.
+            diffhours = (thistime - firstTime).total_seconds() / 3600.
+            #print(f"{k} -> dt = {diffminutes}")
+            tgeVsTime.SetPoint(tgeVsTime.GetN(), diffhours, Vfb)
+            tgeVsTime.SetPointError(tgeVsTime.GetN()-1, 0, deltaVfb)
+            #tgeVsTime.SetPointError(tgeVsTime.GetN()-1, 0, 0.01*Vfb) # dummy in case uncertainties are ill-defined, usually they are around 1%
+
+        graphValues = list(tgeVsTime.GetY())
+        minVal = min(graphValues)
+        maxVal = max(graphValues)
+        valDiff = maxVal - minVal
+        scale = 0.5 * valDiff / (maxTemp - minTemp) # scale size of temperature band to 50% of other graph band
+        tgeTemperature_scaled = tgeTemperature.Clone(f"tgeTemperature_scaled_{structure}")
+        for i in range(tgeTemperature.GetN()):
+            yval = tgeTemperature.GetPointY(i)
+            tgeTemperature_scaled.SetPointY(i, (yval - minTemp) * scale + minVal + 0.25 * valDiff)
+
+        maxTempScaled = minVal + 0.75 * valDiff
+        minTempScaled = minVal + 0.25 * valDiff
+        horizLine = ROOT.TLine()
+        horizLine.SetLineColor(ROOT.kGray+3)
+        horizLine.SetLineWidth(2)
+        horizLine.SetLineStyle(2)
+
+        yTitle = "GCD current [nA]" if structure == "GCD" else "Flat-band voltage [-V]"
+        tgeVsTime.SetTitle(f"Sample: {sast.getSampleAttribute(sample, 'leg')}   Structure: {structure}; Time [hours]; {yTitle}")
+        tgeVsTime.SetLineColor(ROOT.kAzure+2)
+        tgeVsTime.SetLineWidth(2)
+        tgeVsTime.SetMarkerStyle(7)
+        tgeVsTime.Draw('ap')
+        tgeVsTime.GetXaxis().SetTitleSize(0.045)
+        tgeVsTime.GetXaxis().SetRangeUser(-50, 1.15*tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
+        tgeVsTime.GetYaxis().SetTitleSize(0.045)
+        tgeVsTime.GetYaxis().SetTitleOffset(0.99)
+        nomifit = ROOT.TF1("nomifit", "[0]*((1+x/[1])^([2]))", tgeVsTime.GetPointX(0), tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
+        #nomifit = ROOT.TF1("nomifit", "[0]*((1-[1]*exp([3]/%s)*x)^([2]))" % round(averageTemperatureKelvin,2), tgeVsTime.GetPointX(0), tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
+        if structure == "MOS2000":
+            nomifit.SetParameters(tgeVsTime.GetPointY(0), 1.0, -0.07)
+        else:
+            nomifit.SetParameters(tgeVsTime.GetPointY(0), 1.0, -0.1)
+            #nomifit.SetParameters(102, -1.0, -0.1, 5000.0)
+        nomifit.SetLineColor(ROOT.kOrange+2)
+        tgeVsTime.Fit("nomifit","SEMR+ EX0") 
+
+        # 
+        altfit = []
+        nAltFitPointEdges = [0, 21, tgeVsTime.GetN()-1]
+        altfitColors = [ROOT.kRed+1, ROOT.kGreen+2, ROOT.kCyan+1, ROOT.kMagenta, ROOT.kViolet, ROOT.kGray+2]
+        if args.doAltFit:
+            for ialt in range(len(nAltFitPointEdges) - 1):
+                ipLow = nAltFitPointEdges[ialt]
+                ipHigh = nAltFitPointEdges[ialt+1]
+                altfit.append(ROOT.TF1(f"altfit_{ialt}", "[0]*((1+x/[1])^([2]))", tgeVsTime.GetPointX(ipLow), tgeVsTime.GetPointX(ipHigh)))
+                # set first parameter to value at t = 0 because the fit still uses "t" and not "t - tgeVsTime.GetPointY(ipLow)"
+                altfit[ialt].SetParameters(tgeVsTime.GetPointY(0), nomifit.GetParameter(1), nomifit.GetParameter(2))
+                altfit[ialt].SetLineColor(ROOT.kBlack if ialt >= len(altfitColors) else altfitColors[ialt])
+                print("-"*30)
+                print(" "*30)
+                print(f"Fit between points ix = {ipLow} and ix = {ipHigh}")
+                tgeVsTime.Fit(f"altfit_{ialt}","SEMR+ EX0") 
+                print("-"*30)
+
+
+        # evaluate asymptoticvalue of time for which Vfb < 3 V (approximately the original value)
+        Vfb_asym = 3.0
+        Vextrap = tgeVsTime.GetPointY(tgeVsTime.GetN()-1)
+        timeExtrap = tgeVsTime.GetPointX(tgeVsTime.GetN()-1)
+        timeStep = 24.0 # in hours, so 1 day
+        i = 0
+        while Vextrap > Vfb_asym:
+            timeExtrap += timeStep
+            Vextrap = nomifit.Eval(timeExtrap)
+            i += 1
+            if i > 365: break # after one year stop this loop 
+        print("-"*30)
+        print(f"{structure}: Vextrap = {Vextrap} V @ time = {round(timeExtrap,1)} hours ({round(timeExtrap/24.0,1)} days or {round(timeExtrap/168.0,1)} weeks) ")
+        print("-"*30)
+
+        tgeTemperature_scaled.SetLineColor(ROOT.kYellow+2)
+        tgeTemperature_scaled.SetLineWidth(2)
+        tgeTemperature_scaled.SetLineStyle(3)
+        tgeTemperature_scaled.Draw("l same")
+
+        horizLine.DrawLine(xmin, maxTempScaled, xmax, maxTempScaled)
+        horizLine.DrawLine(xmin, minTempScaled, xmax, minTempScaled)
+        lat = ROOT.TLatex()
+        #lat.SetNDC();
+        lat.SetTextFont(42)
+        lat.SetTextSize(0.04)
+        lat.DrawLatex(xmax - 0.15 * deltax, maxTempScaled - 0.06 * valDiff, "T_{max} = %.1f C" % maxTemp)
+        lat.DrawLatex(xmax - 0.15 * deltax, minTempScaled - 0.06 * valDiff, "T_{min} = %.1f C" % minTemp)
+
+        leg = ROOT.TLegend(0.35, 0.7, 0.96, 0.9)
+        leg.SetNColumns(2)
+        leg.SetFillColor(0)
+        #leg.SetFillStyle(0)
+        #leg.SetBorderSize(0)
+        leg.AddEntry(tgeVsTime, "Measurement", "PLE")
+        leg.AddEntry(tgeTemperature_scaled, "Temperature", "L")
+        #leg.AddEntry(expfit, "Fit: a+b#upoint e^{-t/c}", "L")
+        leg.AddEntry(nomifit, "Fit: a #upoint(1 #plus t / b)^{c}", "L")
+        leg.Draw("same")
+
+        cName = f"{outdir}/summary_annealingVsTime_{sample}_{structure}"
+        for ext in ["png", "pdf"]:
+            c.SaveAs(f"{cName}.{ext}")
+
+        # compare temperature with ratio of graph/fit
+        # for ratio and comparison to temperature
+        canvas = ROOT.TCanvas("canvas","",800,800)
+        canvas.SetTickx(1)
+        canvas.SetTicky(1)
+        canvas.SetGridx(1)
+        canvas.SetGridy(1)
+        canvas.SetLeftMargin(leftMargin)
+        canvas.SetRightMargin(rightMargin)
+        canvas.cd()
+        canvas.SetBottomMargin(0.5)
+        pad2 = ROOT.TPad("pad2","pad2",0.0,0.0,1.0,0.95)
+        pad2.SetTickx(1)
+        pad2.SetTicky(1)
+        pad2.SetTopMargin(0.5)
+        pad2.SetLeftMargin(leftMargin)
+        pad2.SetRightMargin(rightMargin)
+        pad2.SetFillColor(0)
+        pad2.SetGridx(1)
+        pad2.SetGridy(1)
+        pad2.SetFillStyle(0)
+        ratio = ROOT.TGraphErrors()
+        ratio.SetName(f"measurementOverFit_{structure}")
+        ratio.SetTitle(f"Sample: {sast.getSampleAttribute(sample, 'leg')}   Structure: {structure}")
+        for i in range(tgeVsTime.GetN()):
+            xval = tgeVsTime.GetPointX(i)
+            fitval = nomifit.Eval(xval)
+            ratio.SetPoint(i, xval, tgeVsTime.GetPointY(i)/fitval)
+            ratio.SetPointError(i, 0, tgeVsTime.GetErrorY(i)/fitval)
+        canvas.cd()
+        #rangeXaxis = 1.05 * (max(tgeVsTime.GetPointX(tgeVsTime.GetN()-1), xmax) - tgeTemperature.GetPointX(0))
+        #hframe = ROOT.TH1D("hframe", "", 1, tgeTemperature.GetPointX(0), rangeXaxis)
+        #hframe.SetMarkerSize(0)
+        ratio.SetMarkerStyle(20)
+        ratio.GetYaxis().SetTitle("Measured V_{fb} / fit")
+        ratio.GetXaxis().SetLabelSize(0)
+        ratio.GetXaxis().SetTitle("")
+        #hframe.GetXaxis().SetRangeUser(tgeTemperature.GetPointX(0), rangeXaxis)
+        #minyframe = min(list(ratio.GetY()))
+        #maxyframe = max(list(ratio.GetY()))
+        #diff = maxyframe - minyframe 
+        #hframe.GetYaxis().SetRangeUser(minyframe - 0.05*diff, maxyframe + 0.05*diff)
+        #hframe.Draw("HIST")
+        #ratio.Draw("apl SAME")
+        ratio.Draw("apl")
+        pad2.Draw()
+        pad2.cd()
+        tgeTemperature.GetXaxis().SetTitle("Time [hours]")
+        tgeTemperature.GetYaxis().SetTitle("Temperature [C]")
+        tgeTemperature.GetYaxis().SetTitleSize(0.05)
+        tgeTemperature.GetYaxis().SetLabelSize(0.04)
+        #tgeTemperature.GetXaxis().SetRangeUser(ratio.GetPointX(0), rangeXaxis)
+        #deltaT = maxTemp - minTemp 
+        #hframe.GetYaxis().SetRangeUser(minTemp - 0.05*deltaT, maxTemp + 0.05*deltaT)
+        #hframe.Draw("HIST")
+        #tgeTemperature.Draw("apl SAME")
+        tgeTemperature.Draw("apl")
+
+        cName = f"{outdir}/measurementOverFit_{sample}_{structure}"
+        for ext in ["png", "pdf"]:
+            canvas.SaveAs(f"{cName}.{ext}")
             
-        for structure in args.structures:
-            tgeVsTime = ROOT.TGraphErrors()
-            tgeVsTime.SetName(f"sample_{structure}_annealing")
-            for k in sorted(annealingSteps.keys()):
-                if args.lastStep >= 0 and k > args.lastStep:
-                    continue
-                #print(f"{k} -> {annealingSteps[k]}")
-                datafiles = list(filter(lambda x: x.endswith(".dat"), os.listdir(annealingSteps[k]["path"])))
-                Cox = siSeSa.getCox(structure)
-                onefile = list(x for x in datafiles if structure in x)[0] 
-                datafile = annealingSteps[k]["path"] + "/" + onefile
-                #print(datafile)
-                graph = getGraphFromData(datafile, structure)
-                Vfb, deltaVfb = fitVfb(structure, graph, Cox, outdir, k)
-                date = annealingSteps[k]["timestamp"][0]
-                year = int(date[0:4])
-                month = int(date[4:6])
-                day = int(date[6:8])
-                time = annealingSteps[k]["timestamp"][1]
-                hour = int(time[0:2])
-                minute = int(time[2:4])
-                second = int(time[4:6])
-                thistime = datetime.datetime(year, month, day, hour, minute, second)
-                #diffminutes = (thistime - firstTime).total_seconds() / 60.
-                diffhours = (thistime - firstTime).total_seconds() / 3600.
-                #print(f"{k} -> dt = {diffminutes}")
-                tgeVsTime.SetPoint(tgeVsTime.GetN(), diffhours, Vfb)
-                tgeVsTime.SetPointError(tgeVsTime.GetN()-1, 0, deltaVfb)
-                #tgeVsTime.SetPointError(tgeVsTime.GetN()-1, 0, 0.01*Vfb) # dummy in case uncertainties are ill-defined, usually they are around 1%
-
-            graphValues = list(tgeVsTime.GetY())
-            minVal = min(graphValues)
-            maxVal = max(graphValues)
-            valDiff = maxVal - minVal
-            scale = 0.5 * valDiff / (maxTemp - minTemp) # scale size of temperature band to 50% of other graph band
-            tgeTemperature_scaled = tgeTemperature.Clone(f"tgeTemperature_scaled_{structure}")
-            for i in range(tgeTemperature.GetN()):
-                yval = tgeTemperature.GetPointY(i)
-                tgeTemperature_scaled.SetPointY(i, (yval - minTemp) * scale + minVal + 0.25 * valDiff)
-            
-            maxTempScaled = minVal + 0.75 * valDiff
-            minTempScaled = minVal + 0.25 * valDiff
-            horizLine = ROOT.TLine()
-            horizLine.SetLineColor(ROOT.kGray+3)
-            horizLine.SetLineWidth(2)
-            horizLine.SetLineStyle(2)
-                
-            yTitle = "GCD current [nA]" if structure == "GCD" else "Flat-band voltage [-V]"
-            tgeVsTime.SetTitle(f"sample {structure}; Time [hours]; {yTitle}")
-            tgeVsTime.SetLineColor(ROOT.kAzure+2)
-            tgeVsTime.SetLineWidth(2)
-            tgeVsTime.SetMarkerStyle(7)
-            tgeVsTime.Draw('apl')
-            tgeVsTime.GetXaxis().SetTitleSize(0.045)
-            tgeVsTime.GetXaxis().SetRangeUser(-50, 1.15*tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
-            tgeVsTime.GetYaxis().SetTitleSize(0.045)
-            tgeVsTime.GetYaxis().SetTitleOffset(0.99)
-            # fit with exponential
-            #expfit = ROOT.TF1("expfit", "[0]*exp(-x/[1])+[2]", tgeVsTime.GetPointX(0), tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
-            #expfit.SetParameters(tgeVsTime.GetPointY(0), 600.0, tgeVsTime.GetPointY(tgeVsTime.GetN()-1))
-            #expfit.SetLineColor(ROOT.kRed+1)
-            #tgeVsTime.Fit("expfit","SEMR+ EX0") 
-
-            #altfit = ROOT.TF1("altfit", "[0]*TMath::Power(1-x/[1],-[2])", tgeVsTime.GetPointX(0), tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
-            altfit = ROOT.TF1("altfit", "[0]*((1-[1]*x)^([2]))", tgeVsTime.GetPointX(0), tgeVsTime.GetPointX(tgeVsTime.GetN()-1))
-            if structure == "MOS2000":
-                altfit.SetParameters(200, -1.8, -0.07)
-            altfit.SetLineColor(ROOT.kOrange+2)
-            tgeVsTime.Fit("altfit","SEMR+ EX0") 
-
-            tgeTemperature_scaled.SetLineColor(ROOT.kYellow+2)
-            tgeTemperature_scaled.SetLineWidth(2)
-            tgeTemperature_scaled.SetLineStyle(3)
-            tgeTemperature_scaled.Draw("l same")
-            
-            horizLine.DrawLine(xmin, maxTempScaled, xmax, maxTempScaled)
-            horizLine.DrawLine(xmin, minTempScaled, xmax, minTempScaled)
-            lat = ROOT.TLatex()
-            #lat.SetNDC();
-            lat.SetTextFont(42)
-            lat.SetTextSize(0.04)
-            lat.DrawLatex(xmax - 0.15 * deltax, maxTempScaled - 0.06 * valDiff, "T_{max} = %.1f C" % maxTemp)
-            lat.DrawLatex(xmax - 0.15 * deltax, minTempScaled - 0.06 * valDiff, "T_{min} = %.1f C" % minTemp)
-
-            leg = ROOT.TLegend(0.35, 0.7, 0.95, 0.9)
-            leg.SetNColumns(2)
-            leg.SetFillColor(0)
-            #leg.SetFillStyle(0)
-            #leg.SetBorderSize(0)
-            leg.AddEntry(tgeVsTime, "Measurement", "PLE")
-            leg.AddEntry(tgeTemperature_scaled, "Temperature", "L")
-            #leg.AddEntry(expfit, "Fit: a+b#upoint e^{-t/c}", "L")
-            leg.AddEntry(altfit, "Fit: a #upoint(1 #minus b #upoint t)^{c}", "L")
-            leg.Draw("same")
-
-            cName = f"{outdir}/summary_annealingVsTime_{sample}_{structure}"
-            for ext in ["png", "pdf"]:
-                c.SaveAs(f"{cName}.{ext}")
-
-        
+        # save graphs in root file, including fit function, why not
+        of = safeOpenFile(f"{outdir}/{sample}_{structure}.root", mode="RECREATE")
+        of.cd()
+        tgeTemperature.Write()
+        ratio.Write()
+        nomifit.Write()
+        tgeVsTime.Write()
+        tgeTemperature_scaled.Write()
+        of.Close()
