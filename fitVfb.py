@@ -1,59 +1,71 @@
+## safe batch mode
+import sys
+args = sys.argv[:]
+sys.argv = ['-b']
 import ROOT
-from ROOT import *
+sys.argv = args
+ROOT.gROOT.SetBatch(True)
+ROOT.PyConfig.IgnoreCommandLineOptions = True
+
+from copy import *
+from utility import *
+
 from glob import glob
 import os
 import constants as cnst
-import sys
 
-gROOT.SetBatch(True)
+from functionsAnnealing import *
 
-indir = '/eos/user/h/hgsensor/HGCAL_test_results/Data/'
-outdir = 'allplots'
-outfiles = 'Vfb_files'
+import argparse
 
-doses = [0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030]
+# now passed with options
+# indir = '/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/' # now in Results_Xray/, no longer in Data/
+# outdir = 'allplots'
+# outfiles = 'Vfb_files'
 
-samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR',
-           '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
-           '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
+# doses = [0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030]
 
-GCD_exclude = ['1008_LR','1113_LR','1105_LR','1112_LR']
-MOS_exclude = ['1012_UL']
+# samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR',
+#            '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
+#            '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
 
-def checkGoodList(ls):
+# GCD_exclude = ['1008_LR','1113_LR','1105_LR','1112_LR']
+# MOS_exclude = ['1012_UL']
+
+def checkGoodList(args, ls):
     for i,l1 in enumerate(ls):
         for j,l2 in enumerate(ls):
             if i==j: continue
             if l1 in l2: 
                 if l1+'_1kHz' in l2: continue
-                if 'GCD' in l1 and l1.split('_')[1]+'_'+l1.split('_')[2] in GCD_exclude:
+                if 'GCD' in l1 and l1.split('_')[1]+'_'+l1.split('_')[2] in args.GCD_exclude:
                     continue
-                print '\nWARNING: potential duplicate:', l1, l2
-                print 'please check\n'
+                print('\nWARNING: potential duplicate:', l1, l2)
+                print('please check\n')
     return
 
-def readGoodList():
+def readGoodList(args):
     global good_GCD
     global good_MOS
-    f_GCD = open('configs/good_GCD.txt','r') 
-    f_MOS = open('configs/good_MOS.txt','r') 
+    f_GCD = open(f'{args.configdir}/good_GCD.txt','r') 
+    f_MOS = open(f'{args.configdir}/good_MOS.txt','r') 
     good_GCD = f_GCD.read().splitlines()
     good_MOS = f_MOS.read().splitlines()
     return
 
-def readMOSexcludeDose():
+def readMOSexcludeDose(args):
     global MOS_exclude_dose
-    f = open('configs/MOS_exclude_dose.txt','r')
+    f = open(f'{args.configdir}/MOS_exclude_dose.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     MOS_exclude_dose = [l.replace(' ','').split('&') for l in lines]
     for l in MOS_exclude_dose:
         if len(l) != 3:
-            print 'ERROR in file MOS_exclude_dose.txt: wrong number of arguments in entry below\n {}'.format(l)
+            print(f"ERROR in file MOS_exclude_dose.txt: wrong number of arguments in entry below\n {l}")
             sys.exit()
         if l[1] != 'MOShalf' and l[1] != 'MOS2000':
-            print 'ERROR in file MOS_exclude_dose.txt: structure in entry below not recognised\n {}'.format(l)
+            print(f"ERROR in file MOS_exclude_dose.txt: structure in entry below not recognised\n {l}")
             sys.exit()
     return
 
@@ -64,16 +76,16 @@ def isMOSexcluded(sample,structure,dose):
     return False
 
 
-def readGCDexcludeDose():
+def readGCDexcludeDose(args):
     global GCD_exclude_dose
-    f = open('configs/GCD_exclude_dose.txt','r')
+    f = open(f'{args.configdir}/GCD_exclude_dose.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     GCD_exclude_dose = [l.replace(' ','').split('&') for l in lines]
     for l in GCD_exclude_dose:
         if len(l) != 2:
-            print 'ERROR in file GCD_exclude_dose.txt: wrong number of arguments in entry below\n {}'.format(l)
+            print(f"ERROR in file GCD_exclude_dose.txt: wrong number of arguments in entry below\n {f}")
             sys.exit()
     return
 
@@ -89,16 +101,16 @@ def isGCDexcluded(sample,dose):
                     return True
     return False
 
-def readRemovePoints():
+def readRemovePoints(args):
     global remove_points
-    f = open('configs/remove_last_point.txt','r')
+    f = open(f'{args.configdir}/remove_last_point.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     remove_points = [l.replace(' ','').split('&') for l in lines]
     for l in remove_points:
         if len(l) != 3 and len(l) != 4:
-            print 'ERROR in file remove_last_point.txt: wrong number of arguments in entry below\n {}'.format(l)
+            print(f"ERROR in file remove_last_point.txt: wrong number of arguments in entry below\n {l}")
             sys.exit()
     return
 
@@ -111,16 +123,16 @@ def pointsToRemove(sample,structure,dose):
                 return 1
     return 0
 
-def readGCDcuts():
+def readGCDcuts(args):
     global GCD_cuts
-    f = open('configs/cut_GCD_curve.txt','r')
+    f = open(f'{args.configdir}/cut_GCD_curve.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     GCD_cuts = [l.replace(' ','').split('&') for l in lines]
     for l in GCD_cuts:
         if len(l) != 4 and len(l) != 6:
-            print 'ERROR in file cut_GCD_curve.txt: wrong number of arguments in entry below\n {}'.format(l)
+            print("ERROR in file cut_GCD_curve.txt: wrong number of arguments in entry below\n {l}")
             sys.exit()
     return
 
@@ -145,16 +157,16 @@ def getGCDcuts(sample,dose):
 
     return low, high, gmin, gmax
 
-def readGCDranges():
+def readGCDranges(args):
     global GCD_ranges
-    f = open('configs/GCD_range.txt','r')
+    f = open(f'{args.configdir}/GCD_range.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     GCD_ranges = [l.replace(' ','').split('&') for l in lines]
     for l in GCD_ranges:
         if len(l) != 4:
-            print 'ERROR in file GCD_range.txt: wrong number of arguments in entry below\n {}'.format(l)
+            print("ERROR in file GCD_range.txt: wrong number of arguments in entry below\n {l}")
             sys.exit()
     return
 
@@ -176,31 +188,31 @@ def getGCDrange(sample,dose,low,high):
             high += float(l[3])
     return low, high
 
-def readCustomRampFile():
+def readCustomRampFile(args):
     global list_CRF
-    f = open('configs/ramp_custom.txt','r')
+    f = open(f'{args.configdir}/ramp_custom.txt','r')
     lines = f.read().splitlines()
     f.close()
     lines = list(filter(lambda a: not a.startswith('#') and not a.replace(' ','') == '', lines))
     list_CRF = [l.replace(' ','').split('&') for l in lines]
     for l in list_CRF:
         if len(l) < 6 or len(l) > 7:
-            print 'ERROR in file ramp_custom.txt: wrong number of arguments in entry below\n {}'.format(l)
+            print(f"ERROR in file ramp_custom.txt: wrong number of arguments in entry below\n {l}")
             sys.exit()
         if l[1] != 'MOShalf' and l[1] != 'MOS2000':
-            print 'ERROR in file ramp_custom.txt: structure in entry below not recognised\n {}'.format(l)
+            print(f"ERROR in file ramp_custom.txt: structure in entry below not recognised\n {l}")
             sys.exit()
         if l[3].lower() != 'rel' and l[3].lower() != 'abs':
-            print 'ERROR in file ramp_custom.txt: please specify rel/abs correctly in the entry below\n {}'.format(l)
+            print(f"ERROR in file ramp_custom.txt: please specify rel/abs correctly in the entry below\n {l}")
             sys.exit()
         if len(l) > 6:
             if l[6].lower() != 'true' and l[6].lower() != 'false':
-                print 'ERROR in file ramp_custom.txt: please specify true/false (or nothing) for freq in the entry below\n {}'.format(l)
+                print(f"ERROR in file ramp_custom.txt: please specify true/false (or nothing) for freq in the entry below\n {l}")
                 sys.exit()
 
     return
 
-def getCustomRamp(sample,structure,dose):
+def getCustomRamp(sample, structure, dose):
     for l in list_CRF:
         if l[0] == sample and l[1] == structure and float(l[2])==dose:
             if len(l) > 6:
@@ -209,7 +221,7 @@ def getCustomRamp(sample,structure,dose):
                 return float(l[4]), float(l[5]), l[3].lower() == 'rel', None
     return
 
-def isCustomRamp(sample,structure,dose,freq):
+def isCustomRamp(sample, structure, dose, freq):
     for l in list_CRF:
         if l[0] == sample and l[1] == structure and float(l[2])==dose:
             if len(l) < 7:
@@ -220,7 +232,7 @@ def isCustomRamp(sample,structure,dose,freq):
                 return True
     return False
 
-def getCustomRampValues(sample,structure,dose,freq):
+def getCustomRampValues(sample, structure, dose, freq):
     for l in list_CRF:
         if l[0] == sample and l[1] == structure and float(l[2])==dose:
             if len(l) < 7:
@@ -231,14 +243,14 @@ def getCustomRampValues(sample,structure,dose,freq):
                 return float(l[4]), float(l[5]), l[3].lower() == 'rel'
     return None
 
-def getGoodDirectory(sample, structure, dose,freq=False):
+def getGoodDirectory(sample, structure, dose, freq=False):
 
     if 'MOS' in structure:
         ls = good_MOS
     elif 'GCD' in structure:
         ls = good_GCD
     else:
-        print 'invalid structure: ', structure
+        print(f"invalid structure: {structure}")
         return
 
     name = '{}_{}_{}kGy'.format(sample,structure,dose)
@@ -258,21 +270,22 @@ def getGoodDirectory(sample, structure, dose,freq=False):
                 return l
     return 
 
-def formPath(sample, structure, dose,freq):
+def formPath(args, sample, structure, dose, freq):
     gd = getGoodDirectory(sample,structure,dose)
     if gd is None:
         return
-    inpath = '{}/{}'.format(indir,gd)
+    inpath = '{}/{}'.format(args.indir, gd)
     if 'MOS' in structure:
-        inpath += '/{}_CV_needle_pad_1.txt'.format(inpath.split('/')[-1])
+        meas_type = "CV"
     elif 'GCD' in structure:
-        inpath += '/{}_IV_needle_pad_1.txt'.format(inpath.split('/')[-1])
+        meas_type = "IV"
     else:
-        print 'invalid structure: ', structure
+        print(f"invalid structure: {structure}")
         return
+    inpath += '/{}_{}_needle_pad_1.txt'.format(inpath.split('/')[-1], meas_type)
     if not os.path.exists(inpath):
-        print 'ERROR! file does not exist:', inpath
-        print 'please check\n'
+        print(f"ERROR! file does not exist: {inpath}")
+        print("please check\n")
         return
     return inpath
 
@@ -293,65 +306,32 @@ def readFile(path):
         eIC.append(float(line[3]))
     return [V, IC, eIC]
 
-def makePlot(sample,structure,dose,freq=False):
-    path = formPath(sample, structure, dose,freq)
+def makePlot(args, sample, structure, dose, freq=False):
+    path = formPath(args, sample, structure, dose, freq)
     if path is None:
         return
     V, IC, eIC = readFile(path)
-    tge = TGraphErrors()
-    for i in range(0,len(V)):
+    tge = ROOT.TGraphErrors()
+    for i in range(0, len(V)):
         if 'GCD' in structure:
             IC[i] *= -1.
-        tge.SetPoint(i,-1*V[i],IC[i])
-        tge.SetPointError(i,0,eIC[i])
+        tge.SetPoint(i, -1*V[i], IC[i])
+        tge.SetPointError(i, 0, eIC[i])
     if 'MOS' in structure:
         tge.SetName('gC')
         tge.SetTitle('CV; -V gate [V]; MOS C [pF]')
     elif 'GCD' in structure:
         tge.SetName('gI')
         tge.SetTitle('IV; -V gate [V]; diode I [nA]')
-
     return tge
 
-def graph_derivative(g):
-    der = TGraph()
-    for i in range(0,g.GetN()-1):
-        der.SetPoint(i,(g.GetPointX(i+1)+g.GetPointX(i))/2.,(g.GetPointY(i+1)-g.GetPointY(i))/(g.GetPointX(i+1)-g.GetPointX(i)))
-    return der
 
-def cutGraph(old):
-    new = TGraphErrors()
-    X = list(old.GetX())
-    Y = list(old.GetY())
-    EX = list(old.GetEX())
-    EY = list(old.GetEY())
-    i = Y.index(min(Y))
-    X = X[i:]
-    Y = Y[i:]
-    EX = EX[i:]
-    EY = EY[i:]
+def fitVfb(args, sample, structure, dose, Cox, freq=False):
 
-    for i,x in enumerate(X):
-        new.SetPoint(i,x,Y[i])
-        new.SetPointError(i,EX[i],EY[i])
-
-    return new
-
-
-def findX(yy,tge):
-    X = list(tge.GetX())
-    Y = list(tge.GetY())
-    for i,y in enumerate(Y):
-        if y>yy: break
-    return (X[i]+X[i-1])*.5
-
-
-def fitVfb(sample,structure,dose,Cox,freq=False):
-
-    tge = makePlot(sample,structure,dose,freq)
+    tge = makePlot(args, sample, structure, dose, freq)
     if tge == None: return
 
-    for k in range(0,pointsToRemove(sample,structure,dose)):
+    for k in range(0, pointsToRemove(sample, structure, dose)):
         tge.RemovePoint(tge.GetN()-1)
 
     cut = True
@@ -361,8 +341,9 @@ def fitVfb(sample,structure,dose,Cox,freq=False):
     if cut: 
         tge = cutGraph(tge)
     
-    c = TCanvas()
-
+    c = ROOT.TCanvas()
+    
+    
     minC = min(list(tge.GetY()))
     maxC = max(list(tge.GetY()))
     maxV = max(list(tge.GetX()))
@@ -372,18 +353,18 @@ def fitVfb(sample,structure,dose,Cox,freq=False):
     if structure =='MOS2000' and maxC<200:
         return
 
-    low_ramp = findX (minC + .5 * diff, tge)
-    high_ramp = findX (minC + .9 * diff, tge)
+    low_ramp  = findX(minC + 0.5 * diff, tge)
+    high_ramp = findX(minC + 0.9 * diff, tge)
 
     if dose == 0:
-        low_ramp = findX (minC + .3 * diff, tge)
-        high_ramp = findX (minC + .7 * diff, tge)
+        low_ramp  = findX(minC + 0.3 * diff, tge)
+        high_ramp = findX(minC + 0.7 * diff, tge)
 
-    isCustom = isCustomRamp(sample,structure,dose,freq)
+    isCustom = isCustomRamp(sample, structure, dose, freq)
 
     #adjusting custom ranges
     if isCustom:
-        c_low, c_high, isRel = getCustomRampValues(sample,structure,dose,freq)
+        c_low, c_high, isRel = getCustomRampValues(sample, structure, dose, freq)
         if isRel:
             if c_low != -999:
                 low_ramp = findX (minC + c_low * diff, tge)
@@ -394,35 +375,35 @@ def fitVfb(sample,structure,dose,Cox,freq=False):
                 low_ramp = c_low
             if c_high != -999:
                 high_ramp = c_high
-            
 
-    ramp = TF1('ramp','pol1(0)',low_ramp,high_ramp)
-    tge.Fit(ramp,'q','',low_ramp,high_ramp)
+    ramp = ROOT.TF1('ramp', 'pol1(0)', low_ramp, high_ramp)
+    tge.Fit(ramp, 'q', '', low_ramp, high_ramp)
 
     # Vfb = (ramp.GetParameter(0)-plat.GetParameter(0))/(ramp.GetParameter(1)-plat.GetParameter(1))*(-1.)
-    Vfb = -1.*(ramp.GetParameter(0)-Cox)/ramp.GetParameter(1)
+    Vfb = -1. * (ramp.GetParameter(0)-Cox) / ramp.GetParameter(1)
 
     tge.Draw('ap')
     ramp.Draw('l same')
 
-    ramp_ext = TF1('ramp_ext','pol1(0)',high_ramp,Vfb+5)
-    plat_ext = TF1('plat_ext','pol0(0)',Vfb-10,maxV)
-    ramp_ext.SetParameters(ramp.GetParameter(0),ramp.GetParameter(1))
-    plat_ext.SetParameter(0,Cox)
-    ramp_ext.SetLineColor(kBlue)
-    plat_ext.SetLineColor(kBlue)
+    ramp_ext = ROOT.TF1('ramp_ext', 'pol1(0)', high_ramp, Vfb+5)
+    plat_ext = ROOT.TF1('plat_ext', 'pol0(0)', Vfb-10, maxV)
+    ramp_ext.SetParameters(ramp.GetParameter(0), ramp.GetParameter(1))
+    plat_ext.SetParameter(0, Cox)
+    ramp_ext.SetLineColor(ROOT.kBlue)
+    plat_ext.SetLineColor(ROOT.kBlue)
 
     ramp_ext.Draw('l same')
     plat_ext.Draw('l same')
 
-    l = TLine(Vfb,minC,Vfb,maxC)
-    l.SetLineColor(kGreen+1)
+    l = ROOT.TLine(Vfb, minC, Vfb, maxC)
+    l.SetLineColor(ROOT.kGreen+1)
     l.Draw('l same')
     
+    nameNoExt = f"{args.outdir}/fit_{sample}_{structure}_{dose}kGy"
     if freq:
-        c.SaveAs('{}/fit_{}_{}_{}kGy_1kHz.png'.format(outdir,sample,structure,dose))
+        c.SaveAs(f"{nameNoExt}_1kHz.png")
     else:
-        c.SaveAs('{}/fit_{}_{}_{}kGy.png'.format(outdir,sample,structure,dose))
+        c.SaveAs(f"{nameNoExt}.png")
     return Vfb
 
 
@@ -431,12 +412,12 @@ def calculate_parameters(V_fb, structure, C_ox, sample):
     A = cnst.A_MOShalf
     if structure == 'MOS2000':
         A = cnst.A_MOS2000
-        if C_ox > 700: A = cnst.A_MOS_6inch
+        if C_ox > 700: 
+            A = cnst.A_MOS_6inch
     elif structure == 'MOSc1' or structure == 'MOSc2':
         A = cnst.A_MOS_tracker_circle
     elif structure == 'MOS2s1' or structure == 'MOSs2' or structure == 'MOS':
         A = cnst.A_MOS_tracker_square
-
 
     if sample == '1112_LR': #cables inverted
         A = cnst.A_MOS2000
@@ -446,7 +427,7 @@ def calculate_parameters(V_fb, structure, C_ox, sample):
     A *= 1E-6 # in m^2
     C_ox *= 1E-12 # in F
 
-    phi_s = cnst.Chi + cnst.Eg/2. + cnst.KbTn20*log(cnst.NA/cnst.ni)
+    phi_s = cnst.Chi + cnst.Eg/2. + cnst.KbTn20*ROOT.log(cnst.NA/cnst.ni)
     phi_ms = cnst.phi_m - phi_s
 
     N_ox = C_ox / (A*cnst.q) * (phi_ms + V_fb) # 1/m^2
@@ -458,62 +439,64 @@ def calculate_parameters(V_fb, structure, C_ox, sample):
     return [N_ox, t_ox]
 
 
-def processMOS(sample,structure,Cox,freq=False):
+def processMOS(args, sample, structure, Cox, freq=False):
 
-    if sample in MOS_exclude:
+    if sample in args.MOS_exclude:
         return
 
-    gVfb = TGraph()
-    gNox = TGraph()
+    gVfb = ROOT.TGraph()
+    gNox = ROOT.TGraph()
     gVfb.SetName('gVfb')
     gNox.SetName('gNox')
 
-    for dose in doses:
-        if isMOSexcluded(sample,structure,dose):
+    for dose in args.doses:
+        if isMOSexcluded(sample, structure, dose):
             continue
 
-        Vfb = fitVfb(sample,structure,dose,Cox,freq)
+        Vfb = fitVfb(args, sample, structure, dose, Cox, freq)
         if Vfb == None : continue
         Nox, tox = calculate_parameters(Vfb, structure, Cox-cnst.approx_openC, sample)
         # f.write('{} \t {} \t {} \n'.format(dose,Vfb,Nox))
-        gVfb.SetPoint(gVfb.GetN(),dose,Vfb)
-        gNox.SetPoint(gNox.GetN(),dose,Nox)
+        gVfb.SetPoint(gVfb.GetN(), dose, Vfb)
+        gNox.SetPoint(gNox.GetN(), dose, Nox)
     # f.close()
 
+    rfName = f"{args.outfiles}/dose_{sample}_{structure}"
     if freq:
-        tf = TFile.Open('{}/dose_{}_{}_1kHz.root'.format(outfiles,sample,structure),'recreate')
-    else:
-        tf = TFile.Open('{}/dose_{}_{}.root'.format(outfiles,sample,structure),'recreate')
+        rfName += "_1kHz"
+    tf = safeOpenFile(f"{rfName}.root", mode='recreate')
     gVfb.Write()
     gNox.Write()
+    tf.Close()
 
-    c = TCanvas()
+    c = ROOT.TCanvas()
     gVfb.SetTitle('{} {}; dose [kGy]; V flat-band [-V]'.format(sample,structure))
     gVfb.SetMarkerStyle(7)
     gVfb.Draw('apl')
+    cName = f"{args.outdir}/dose_{sample}_{structure}"
     if freq:
-        c.SaveAs('{}/dose_{}_{}_Vfb_1kHz.png'.format(outdir,sample,structure))
+        c.SaveAs(f"{cName}_Vfb_1kHz.png")
     else:
-        c.SaveAs('{}/dose_{}_{}_Vfb.png'.format(outdir,sample,structure))
+        c.SaveAs(f"{cName}_Vfb.png")
     c.Clear()
     gNox.SetTitle('{} {}; dose [kGy]; oxide charge density [1/cm2]'.format(sample,structure))
     gNox.SetMarkerStyle(7)
     gNox.Draw('apl')
     if freq:
-        c.SaveAs('{}/dose_{}_{}_Nox_1kHz.png'.format(outdir,sample,structure))
+        c.SaveAs(f"{cName}_Nox_1kHz.png")
     else:
-        c.SaveAs('{}/dose_{}_{}_Nox.png'.format(outdir,sample,structure))
+        c.SaveAs(f"{cName}_Nox.png")
 
     return
 
 def getCox(sample,structure):
-    if sample in MOS_exclude:
+    if sample in args.MOS_exclude:
         return 0
     Cox = 0
-    for dose in doses:
-        if isMOSexcluded(sample,structure,dose):
+    for dose in args.doses:
+        if isMOSexcluded(sample, structure, dose):
             continue
-        tge = makePlot(sample,structure,dose)
+        tge = makePlot(args, sample, structure, dose)
         if tge is None:
             continue
         maxC = max(list(tge.GetY()))
@@ -556,7 +539,8 @@ def findApproxDepletion(sample,dose,tge):
     baseline = min(Y)
     Y = [y-baseline for y in Y]
     for i,y in enumerate(Y):
-        if y > max(Y)*.3: break
+        if y > max(Y)*0.3: 
+            break
     
     xL = X[i]-10
     xH = X[i]+10
@@ -580,7 +564,7 @@ def findApproxDepletion(sample,dose,tge):
             ym = Y[i]
             em = eY[i]
             xm = x
-    return [xm,ym+baseline,xM,yM+baseline,(em**2+eM**2)**.5]
+    return [xm,ym+baseline,xM,yM+baseline,(em**2+eM**2)**0.5]
 
 def cutGCDcurve(tge,cut):
     if list(tge.GetX())[-1] > cut:
@@ -600,8 +584,8 @@ def cutGCDcurveLow(tge,cut):
     tge.SetMaximum(max(list(tge.GetY()))*1.1)
     return tge
 
-def getGCDcurrent(sample,dose):
-    tge = makePlot(sample,'GCD',dose)
+def getGCDcurrent(args, sample, dose):
+    tge = makePlot(args, sample, 'GCD', dose)
     if tge == None: return
 
     for k in range(0,pointsToRemove(sample,'GCD',dose)):
@@ -618,7 +602,6 @@ def getGCDcurrent(sample,dose):
     if gmax != -999:
         tge.SetMaximum(gmax)
 
-
     tge_orig = tge.Clone()    
     threshold = 0.05
     if sample == '3009_LR' and dose == 2:
@@ -629,111 +612,161 @@ def getGCDcurrent(sample,dose):
 
     xm, ym, xM, yM, e = findApproxDepletion(sample,dose,tge)
 
-    at = TGraph()
+    at = ROOT.TGraph()
     at.SetPoint(0,xm,ym)
     at.SetPoint(1,xM,yM)
     at.SetMarkerStyle(8)
-    at.SetMarkerColor(kGreen)
+    at.SetMarkerColor(ROOT.kGreen)
         
-    c = TCanvas()
-    tge_orig.SetLineColor(kRed)
-    tge_orig.SetMarkerColor(kRed)
+    c = ROOT.TCanvas()
+    tge_orig.SetLineColor(ROOT.kRed)
+    tge_orig.SetMarkerColor(ROOT.kRed)
     tge_orig.Draw('apl')
     tge.Draw('pl same')
     at.Draw('p same')
-    c.SaveAs('{}/fit_{}_GCD_{}kGy.png'.format(outdir,sample,dose))
+    c.SaveAs('{}/fit_{}_GCD_{}kGy.png'.format(args.outdir,sample,dose))
 
     return [yM-ym,e]
 
-def processGCD(sample):
+def processGCD(args, sample):
     
-    if sample in GCD_exclude:
+    if sample in args.GCD_exclude:
         return
 
-    gI = TGraphErrors()
-    gJ = TGraphErrors()
+    gI = ROOT.TGraphErrors()
+    gJ = ROOT.TGraphErrors()
     gI.SetName('gI')
     gJ.SetName('gJ')
 
-    for dose in doses:
+    for dose in args.doses:
         if dose==0: continue
         if isGCDexcluded(sample,dose):
             continue
         
-        Ie = getGCDcurrent(sample,dose)
+        Ie = getGCDcurrent(args, sample, dose)
         if Ie == None : continue
         I = Ie[0]
         e = Ie[1]
         J = calculate_GCD_parameters(I,sample)
         gI.SetPoint(gI.GetN(),dose,I)
         gJ.SetPoint(gJ.GetN(),dose,J)
-        gI.SetPointError(gI.GetN()-1,0,e)
-        gJ.SetPointError(gJ.GetN()-1,0,e*J/I)
+        gI.SetPointError(gI.GetN()-1, 0, e)
+        gJ.SetPointError(gJ.GetN()-1, 0, e*J/I)
 
 
-    tf = TFile.Open('{}/dose_{}_GCD.root'.format(outfiles,sample),'recreate')
+    tf = safeOpenFile(f"{args.outfiles}/dose_{sample}_GCD.root", mode='recreate')
     gI.Write()
     gJ.Write()
+    tf.Close()
 
-    c = TCanvas()
+    c = ROOT.TCanvas()
     gI.SetTitle('{} GCD; dose [kGy]; GCD current [nA]'.format(sample))
     gI.SetMarkerStyle(7)
     gI.Draw('apl')
-    c.SaveAs('{}/dose_{}_GCD_I.png'.format(outdir,sample))
+    c.SaveAs('{}/dose_{}_GCD_I.png'.format(args.outdir, sample))
     c.Clear()
     gJ.SetTitle('{} GCD; dose [kGy]; surface velocity [cm/s]'.format(sample))
     gJ.SetMarkerStyle(7)
     gJ.Draw('apl')
-    c.SaveAs('{}/dose_{}_GCD_J.png'.format(outdir,sample))
+    c.SaveAs('{}/dose_{}_GCD_J.png'.format(args.outdir,sample))
 
     return
 
-def processSample(sample):
+def processSample(args, sample):
+    # some customization of the structure name
     structures = ['MOShalf','MOS2000']
     if '_E_' in sample:
         structures = ['MOSc1','MOSc2','MOSs2']
     elif '_SE_' in sample:
         structures = ['MOS']
 
-    for structure in structures:
-        Cox = getCox(sample,structure)
-        processMOS(sample,structure,Cox)
-        if sample == '3009_LR':
-            processMOS(sample,structure,Cox,freq=True)
-    if not '_E_' in sample:
-            processGCD(sample)
+    if not args.skipStructure == "MOS":
+        for structure in structures:
+            if args.isAnnealing:
+                processMOSannealing(args, sample, structure)
+            else:
+                Cox = getCox(sample,structure)
+                processMOS(args, sample, structure, Cox)
+                if sample == '3009_LR':
+                    processMOS(args, sample, structure, Cox, freq=True)
+    if not args.skipStructure == "GCD" and not '_E_' in sample:
+        processGCD(args, sample)
     return
 
-def initialize():
+def initialize(args):
 
-    readGoodList()
-    checkGoodList(good_GCD)
-    checkGoodList(good_MOS)
-    readCustomRampFile()
-    readMOSexcludeDose()
-    readGCDexcludeDose()
-    readRemovePoints()
-    readGCDcuts()
-    readGCDranges()
+    readGoodList(args)
+    checkGoodList(args, good_GCD)
+    checkGoodList(args, good_MOS)
+    readCustomRampFile(args)
+    readMOSexcludeDose(args)
+    readGCDexcludeDose(args)
+    readRemovePoints(args)
+    readGCDcuts(args)
+    readGCDranges(args)
 
     return
 
-def main():
+def main(args):
 
-    if not os.path.exists(outdir):                                            
-        os.makedirs(outdir) 
-    if not os.path.exists(outfiles):                                            
-        os.makedirs(outfiles) 
+    createPlotDirAndCopyPhp(args.outdir)
+    createPlotDirAndCopyPhp(args.outfiles, copyPHP=False)
 
-    initialize()
+    initialize(args)
 
-    for sample in samples:
-        processSample(sample)
+    for sample in args.samples:
+        processSample(args, sample)
 
     return
 
 if __name__ == "__main__":
-    main()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--indir",  type=str, 
+                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/", help="Input folder")
+    parser.add_argument("-o", "--outdir", type=str, 
+                        default="./allplots", help="Output folder for plots")
+    parser.add_argument("-c", "--configdir", type=str, 
+                        default="./configs", help="Folder with configuration files")
+    parser.add_argument(      "--outfiles", type=str, 
+                        default="./Vfb_files", help="Output folder for root files (not needed for now for annealing)")
+    parser.add_argument("--doses", nargs="*", type=int, default=[0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030],
+                        help="Comma separated list of irradiation doses in kGy")
+    # samples
+    parser.add_argument("--samples", nargs="+", default=['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR','3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR','3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL'], help="List of samples to be used")
+    # GCD to exclude from sample list above 
+    parser.add_argument("--GCD-exclude", dest="GCD_exclude", nargs="*", default=['1008_LR','1113_LR','1105_LR','1112_LR'], help="List of samples to be used")
+    # MOS to exclude from sample list above
+    parser.add_argument("--MOS-exclude", dest="MOS_exclude", nargs="*", default=['1012_UL'], help="List of samples to be used")
+    parser.add_argument("--skip", dest="skipStructure", choices=["", "MOS", "GCD"],
+                        default="", help="To exclude completely one kind of structure and be faster")
+    parser.add_argument("-a", "--is-annealing", dest="isAnnealing", action="store_true", help="Run code on annealing data")
+    parser.add_argument("--annealing-path-regexp", dest="annealingPathRegexp", type=str, default=".*", help="Use this regex to filter subfolders to be used for annealing plots")
+    args = parser.parse_args()
+
+    ROOT.TH1.SetDefaultSumw2()
+
+    # print(args.doses)
+    # for x in args.doses:
+    #     if not isinstance(x, int):
+    #         print("%s is not integer!" % str(x))
+    # print(args.samples)
+    # quit()
+
+    # print(args.GCD_exclude)
+    # print(f"len = {len(args.GCD_exclude)}")
+    # quit()
+
+    if args.isAnnealing:
+        print()
+        print("Warning: doing annealing, thus ignoring option --outfiles")
+        print()
+        args.outfiles = ""
+
+    if args.configdir.endswith("/"):
+        args.configdir = args.configdir.rstrip("/")
+
+    main(args)
 
 
 
