@@ -3,6 +3,9 @@ import sys
 args = sys.argv[:]
 sys.argv = ['-b']
 import ROOT
+import matplotlib.pyplot as plt
+import mplhep
+plt.style.use(mplhep.style.CMS)
 sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
@@ -311,99 +314,118 @@ def makePlot(args, sample, structure, dose, freq=False):
     if path is None:
         return
     V, IC, eIC = readFile(path)
-    tge = ROOT.TGraphErrors()
-    for i in range(0, len(V)):
+    for i in range(len(V)):
         if 'GCD' in structure:
             IC[i] *= -1.
-        tge.SetPoint(i, -1*V[i], IC[i])
-        tge.SetPointError(i, 0, eIC[i])
-    if 'MOS' in structure:
-        tge.SetName('gC')
-        tge.SetTitle('CV; -V gate [V]; MOS C [pF]')
-    elif 'GCD' in structure:
-        tge.SetName('gI')
-        tge.SetTitle('IV; -V gate [V]; diode I [nA]')
-    return tge
+        V[i] *= -1
+    return V, IC, eIC
 
 
 def fitVfb(args, sample, structure, dose, Cox, freq=False):
 
-    tge = makePlot(args, sample, structure, dose, freq)
-    if tge == None: return
+    import numpy as np
+    VIC = makePlot(args, sample, structure, dose, freq)
+    if VIC is None:
+        return
+    V, IC, eIC = VIC
+    # Remove points if needed
+    n_remove = pointsToRemove(sample, structure, dose)
+    if n_remove > 0:
+        V = V[:-n_remove]
+        IC = IC[:-n_remove]
+        eIC = eIC[:-n_remove]
 
-    for k in range(0, pointsToRemove(sample, structure, dose)):
-        tge.RemovePoint(tge.GetN()-1)
-
+    # Optionally cut graph (not implemented in matplotlib, so skip for now)
     cut = True
     if sample == '3009_LR' and structure == 'MOShalf' and dose == 70 and freq == True:
         cut = False
+    # TODO: implement cutGraph equivalent for matplotlib data arrays if needed
 
-    if cut: 
-        tge = cutGraph(tge)
-    
-    c = ROOT.TCanvas()
-    
-    
-    minC = min(list(tge.GetY()))
-    maxC = max(list(tge.GetY()))
-    maxV = max(list(tge.GetX()))
-    diff = maxC-minC
+    minC = min(IC)
+    maxC = max(IC)
+    maxV = max(V)
+    diff = maxC - minC
 
-    #incomplete curves
-    if structure =='MOS2000' and maxC<200:
+    # incomplete curves
+    if structure == 'MOS2000' and maxC < 200:
         return
 
-    low_ramp  = findX(minC + 0.5 * diff, tge)
-    high_ramp = findX(minC + 0.9 * diff, tge)
+    def findX_matplotlib(yval, V, IC):
+        # Find V where IC crosses yval (linear interp)
+        for i in range(1, len(IC)):
+            if (IC[i-1] <= yval and IC[i] >= yval) or (IC[i-1] >= yval and IC[i] <= yval):
+                # linear interpolation
+                x0, y0 = V[i-1], IC[i-1]
+                x1, y1 = V[i], IC[i]
+                if y1 == y0:
+                    return x0
+                return x0 + (yval-y0)*(x1-x0)/(y1-y0)
+        return V[0]
+
+    low_ramp = findX_matplotlib(minC + 0.5 * diff, V, IC)
+    high_ramp = findX_matplotlib(minC + 0.9 * diff, V, IC)
 
     if dose == 0:
-        low_ramp  = findX(minC + 0.3 * diff, tge)
-        high_ramp = findX(minC + 0.7 * diff, tge)
+        low_ramp = findX_matplotlib(minC + 0.3 * diff, V, IC)
+        high_ramp = findX_matplotlib(minC + 0.7 * diff, V, IC)
 
     isCustom = isCustomRamp(sample, structure, dose, freq)
-
-    #adjusting custom ranges
+    # adjusting custom ranges
     if isCustom:
         c_low, c_high, isRel = getCustomRampValues(sample, structure, dose, freq)
         if isRel:
             if c_low != -999:
-                low_ramp = findX (minC + c_low * diff, tge)
+                low_ramp = findX_matplotlib(minC + c_low * diff, V, IC)
             if c_high != -999:
-                high_ramp = findX (minC + c_high * diff, tge)
+                high_ramp = findX_matplotlib(minC + c_high * diff, V, IC)
         else:
             if c_low != -999:
                 low_ramp = c_low
             if c_high != -999:
                 high_ramp = c_high
 
-    ramp = ROOT.TF1('ramp', 'pol1(0)', low_ramp, high_ramp)
-    tge.Fit(ramp, 'q', '', low_ramp, high_ramp)
+    # Fit a line to the ramp region
+    fit_mask = [(v >= low_ramp and v <= high_ramp) for v in V]
+    fit_V = np.array([v for v, m in zip(V, fit_mask) if m])
+    fit_IC = np.array([ic for ic, m in zip(IC, fit_mask) if m])
+    if len(fit_V) < 2:
+        return
+    coeffs = np.polyfit(fit_V, fit_IC, 1)
+    slope, intercept = coeffs[0], coeffs[1]
 
-    # Vfb = (ramp.GetParameter(0)-plat.GetParameter(0))/(ramp.GetParameter(1)-plat.GetParameter(1))*(-1.)
-    Vfb = -1. * (ramp.GetParameter(0)-Cox) / ramp.GetParameter(1)
+    Vfb = -1. * (intercept - Cox) / slope
 
-    tge.Draw('ap')
-    ramp.Draw('l same')
-
-    ramp_ext = ROOT.TF1('ramp_ext', 'pol1(0)', high_ramp, Vfb+5)
-    plat_ext = ROOT.TF1('plat_ext', 'pol0(0)', Vfb-10, maxV)
-    ramp_ext.SetParameters(ramp.GetParameter(0), ramp.GetParameter(1))
-    plat_ext.SetParameter(0, Cox)
-    ramp_ext.SetLineColor(ROOT.kBlue)
-    plat_ext.SetLineColor(ROOT.kBlue)
-
-    ramp_ext.Draw('l same')
-    plat_ext.Draw('l same')
-
-    l = ROOT.TLine(Vfb, minC, Vfb, maxC)
-    l.SetLineColor(ROOT.kGreen+1)
-    l.Draw('l same')
-    
+    # Plotting
     nameNoExt = f"{args.outdir}/fit_{sample}_{structure}_{dose}kGy"
+    plt.figure()
+    plt.errorbar(V, IC, yerr=eIC, fmt='o', label='Data')
+    # Set x- and y-limits with margin
+    margin_x = (max(V) - min(V)) * 0.05
+    margin_y = (max(IC) - min(IC)) * 0.1
+    plt.xlim(min(V) - margin_x, max(V) + margin_x)
+    plt.ylim(min(IC) - margin_y, max(IC) + margin_y)
+    # plot fit line in the fit region
+    V_fit_range = np.linspace(low_ramp, high_ramp, 100)
+    ramp_fit = slope * V_fit_range + intercept
+    plt.plot(V_fit_range, ramp_fit, label='Fit')
+    # plot extrapolations
+    V_ramp_ext = np.linspace(high_ramp, Vfb+5, 100)
+    ramp_ext = slope * V_ramp_ext + intercept
+    plt.plot(V_ramp_ext, ramp_ext, '--', color='blue', alpha=0.7)
+    V_plat_ext = np.linspace(Vfb-10, maxV, 100)
+    plat_ext = np.ones_like(V_plat_ext) * Cox
+    plt.plot(V_plat_ext, plat_ext, '--', color='blue', alpha=0.7)
+    # Vfb vertical line
+    plt.axvline(Vfb, color='green', linestyle='--', label='Vfb')
+    plt.legend(loc='best')
+    plt.xlabel('-V gate [V]')
+    plt.ylabel('MOS C [pF]' if 'MOS' in structure else 'diode I [nA]')
+    plt.title('CV' if 'MOS' in structure else 'IV')
     if freq:
-        c.SaveAs(f"{nameNoExt}_1kHz.png")
+        plt.savefig(f"{nameNoExt}_1kHz.png")
     else:
-        c.SaveAs(f"{nameNoExt}.png")
+        plt.savefig(f"{nameNoExt}.png")
+    plt.close()
     return Vfb
 
 
@@ -444,48 +466,61 @@ def processMOS(args, sample, structure, Cox, freq=False):
     if sample in args.MOS_exclude:
         return
 
-    gVfb = ROOT.TGraph()
-    gNox = ROOT.TGraph()
-    gVfb.SetName('gVfb')
-    gNox.SetName('gNox')
-
+    doses = []
+    Vfb_values = []
+    Nox_values = []
     for dose in args.doses:
         if isMOSexcluded(sample, structure, dose):
             continue
-
         Vfb = fitVfb(args, sample, structure, dose, Cox, freq)
-        if Vfb == None : continue
+        if Vfb is None:
+            continue
         Nox, tox = calculate_parameters(Vfb, structure, Cox-cnst.approx_openC, sample)
-        # f.write('{} \t {} \t {} \n'.format(dose,Vfb,Nox))
-        gVfb.SetPoint(gVfb.GetN(), dose, Vfb)
-        gNox.SetPoint(gNox.GetN(), dose, Nox)
-    # f.close()
+        doses.append(dose)
+        Vfb_values.append(Vfb)
+        Nox_values.append(Nox)
 
-    rfName = f"{args.outfiles}/dose_{sample}_{structure}"
-    if freq:
-        rfName += "_1kHz"
-    tf = safeOpenFile(f"{rfName}.root", mode='recreate')
-    gVfb.Write()
-    gNox.Write()
-    tf.Close()
+    # Save to ROOT file as before (keep for compatibility)
+    if len(doses) > 0:
+        from array import array
+        rfName = f"{args.outfiles}/dose_{sample}_{structure}"
+        if freq:
+            rfName += "_1kHz"
+        tf = safeOpenFile(f"{rfName}.root", mode='recreate')
+        gVfb = ROOT.TGraph(len(doses), array('d', doses), array('d', Vfb_values))
+        gNox = ROOT.TGraph(len(doses), array('d', doses), array('d', Nox_values))
+        gVfb.SetName('gVfb')
+        gNox.SetName('gNox')
+        gVfb.Write()
+        gNox.Write()
+        tf.Close()
 
-    c = ROOT.TCanvas()
-    gVfb.SetTitle('{} {}; dose [kGy]; V flat-band [-V]'.format(sample,structure))
-    gVfb.SetMarkerStyle(7)
-    gVfb.Draw('apl')
+    # Plot with matplotlib
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.plot(doses, Vfb_values, 'o-', label='Vfb')
+    plt.xlabel('dose [kGy]')
+    plt.ylabel('V flat-band [-V]')
+    plt.title(f'{sample} {structure}')
+    plt.grid(True)
     cName = f"{args.outdir}/dose_{sample}_{structure}"
     if freq:
-        c.SaveAs(f"{cName}_Vfb_1kHz.png")
+        plt.savefig(f"{cName}_Vfb_1kHz.png")
     else:
-        c.SaveAs(f"{cName}_Vfb.png")
-    c.Clear()
-    gNox.SetTitle('{} {}; dose [kGy]; oxide charge density [1/cm2]'.format(sample,structure))
-    gNox.SetMarkerStyle(7)
-    gNox.Draw('apl')
+        plt.savefig(f"{cName}_Vfb.png")
+    plt.close()
+
+    plt.figure()
+    plt.plot(doses, Nox_values, 'o-', label='Nox')
+    plt.xlabel('dose [kGy]')
+    plt.ylabel('oxide charge density [1/cm2]')
+    plt.title(f'{sample} {structure}')
+    plt.grid(True)
     if freq:
-        c.SaveAs(f"{cName}_Nox_1kHz.png")
+        plt.savefig(f"{cName}_Nox_1kHz.png")
     else:
-        c.SaveAs(f"{cName}_Nox.png")
+        plt.savefig(f"{cName}_Nox.png")
+    plt.close()
 
     return
 
@@ -496,11 +531,12 @@ def getCox(sample,structure):
     for dose in args.doses:
         if isMOSexcluded(sample, structure, dose):
             continue
-        tge = makePlot(args, sample, structure, dose)
-        if tge is None:
+        result = makePlot(args, sample, structure, dose)
+        if result is None:
             continue
-        maxC = max(list(tge.GetY()))
-        Cox = max(maxC,Cox)
+        _, IC, _ = result
+        maxC = max(IC)
+        Cox = max(maxC, Cox)
     return Cox
 
 def calculate_GCD_parameters(I,sample):
@@ -516,159 +552,174 @@ def calculate_GCD_parameters(I,sample):
     J *= 100 # in cm/s
     return J 
 
-def removeBadPoints(tge,threshold):
-    eY = list(tge.GetEY())
-    Y = list(tge.GetY())
-    # relerr = [i/j for  i,j in zip(eY,Y)]
-    if max(Y)==min(Y):
-        return tge
-    relerr = [i/(max(Y)-min(Y)) for  i in eY]
-
+def removeBadPoints(V, IC, eIC, threshold):
+    import numpy as np
+    # Remove points with large relative errors
+    if max(IC) == min(IC):
+        return V, IC, eIC
+    relerr = [ei / (max(IC) - min(IC)) for ei in eIC]
     for i, re in enumerate(relerr):
         if re > threshold:
-            tge.RemovePoint(i)
-            break
-    if i < len(relerr)-1:
-        tge = removeBadPoints(tge,threshold)
-    return tge
+            # Remove this point and recurse
+            V_new = V[:i] + V[i+1:]
+            IC_new = IC[:i] + IC[i+1:]
+            eIC_new = eIC[:i] + eIC[i+1:]
+            return removeBadPoints(V_new, IC_new, eIC_new, threshold)
+    return V, IC, eIC
 
-def findApproxDepletion(sample,dose,tge):
-    X = list(tge.GetX())
-    Y = list(tge.GetY())
-    eY = list(tge.GetEY())
-    baseline = min(Y)
-    Y = [y-baseline for y in Y]
-    for i,y in enumerate(Y):
-        if y > max(Y)*0.3: 
+def findApproxDepletion(sample, dose, V, IC, eIC):
+    import numpy as np
+    baseline = min(IC)
+    IC_base = [y - baseline for y in IC]
+    maxY = max(IC_base)
+    i = 0
+    for idx, y in enumerate(IC_base):
+        if y > maxY * 0.3:
+            i = idx
             break
-    
-    xL = X[i]-10
-    xH = X[i]+10
-    xL, xH = getGCDrange(sample,dose,xL,xH)
-
+    xL = V[i] - 10
+    xH = V[i] + 10
+    xL, xH = getGCDrange(sample, dose, xL, xH)
     ym = +999
     yM = -999
     xm = -999
     xM = +999
     eM = 0
     em = 0
-
-    for i,x in enumerate(X):
+    for idx, x in enumerate(V):
         if x < xL or x > xH:
             continue
-        if Y[i] > yM: 
-            yM = Y[i]
-            eM = eY[i]
+        if IC_base[idx] > yM:
+            yM = IC_base[idx]
+            eM = eIC[idx]
             xM = x
-        if Y[i] < ym: 
-            ym = Y[i]
-            em = eY[i]
+        if IC_base[idx] < ym:
+            ym = IC_base[idx]
+            em = eIC[idx]
             xm = x
-    return [xm,ym+baseline,xM,yM+baseline,(em**2+eM**2)**0.5]
+    return [xm, ym + baseline, xM, yM + baseline, (em ** 2 + eM ** 2) ** 0.5]
 
-def cutGCDcurve(tge,cut):
-    if list(tge.GetX())[-1] > cut:
-        tge.RemovePoint(tge.GetN()-1)
-    if list(tge.GetX())[-1] > cut:
-        tge = cutGCDcurve(tge,cut)
+def cutGCDcurve(V, IC, eIC, cut):
+    # Remove points from the end where V[-1] > cut
+    while len(V) > 0 and V[-1] > cut:
+        V = V[:-1]
+        IC = IC[:-1]
+        eIC = eIC[:-1]
+    return V, IC, eIC
 
-    tge.SetMaximum(max(list(tge.GetY()))*1.1)
-    return tge
-
-def cutGCDcurveLow(tge,cut):
-    if list(tge.GetX())[0] < cut:
-        tge.RemovePoint(0)
-    if list(tge.GetX())[0] < cut:
-        tge = cutGCDcurveLow(tge,cut)
-
-    tge.SetMaximum(max(list(tge.GetY()))*1.1)
-    return tge
+def cutGCDcurveLow(V, IC, eIC, cut):
+    # Remove points from the start where V[0] < cut
+    while len(V) > 0 and V[0] < cut:
+        V = V[1:]
+        IC = IC[1:]
+        eIC = eIC[1:]
+    return V, IC, eIC
 
 def getGCDcurrent(args, sample, dose):
-    tge = makePlot(args, sample, 'GCD', dose)
-    if tge == None: return
-
-    for k in range(0,pointsToRemove(sample,'GCD',dose)):
-        tge.RemovePoint(tge.GetN()-1)
-        
-    low, high, gmin, gmax = getGCDcuts(sample,dose)
-
+    import numpy as np
+    result = makePlot(args, sample, 'GCD', dose)
+    if result is None:
+        return
+    V, IC, eIC = result
+    # Remove points if needed
+    n_remove = pointsToRemove(sample, 'GCD', dose)
+    if n_remove > 0:
+        V = V[:-n_remove]
+        IC = IC[:-n_remove]
+        eIC = eIC[:-n_remove]
+    low, high, gmin, gmax = getGCDcuts(sample, dose)
+    # Cut low and high
     if low != -999:
-        tge = cutGCDcurveLow(tge,low)
+        V, IC, eIC = cutGCDcurveLow(V, IC, eIC, low)
     if high != -999:
-        tge = cutGCDcurve(tge,high)
-    if gmin != -999:
-        tge.SetMinimum(gmin)
-    if gmax != -999:
-        tge.SetMaximum(gmax)
-
-    tge_orig = tge.Clone()    
+        V, IC, eIC = cutGCDcurve(V, IC, eIC, high)
+    # Save original for plotting (before removeBadPoints)
+    V_orig, IC_orig, eIC_orig = V[:], IC[:], eIC[:]
+    # Remove bad points
     threshold = 0.05
     if sample == '3009_LR' and dose == 2:
         threshold = 0.1
     if sample == '1006_LR' and dose == 1:
         threshold = 0.1
-    tge = removeBadPoints(tge,threshold)
-
-    xm, ym, xM, yM, e = findApproxDepletion(sample,dose,tge)
-
-    at = ROOT.TGraph()
-    at.SetPoint(0,xm,ym)
-    at.SetPoint(1,xM,yM)
-    at.SetMarkerStyle(8)
-    at.SetMarkerColor(ROOT.kGreen)
-        
-    c = ROOT.TCanvas()
-    tge_orig.SetLineColor(ROOT.kRed)
-    tge_orig.SetMarkerColor(ROOT.kRed)
-    tge_orig.Draw('apl')
-    tge.Draw('pl same')
-    at.Draw('p same')
-    c.SaveAs('{}/fit_{}_GCD_{}kGy.png'.format(args.outdir,sample,dose))
-
-    return [yM-ym,e]
+    V, IC, eIC = removeBadPoints(V, IC, eIC, threshold)
+    # Find depletion points (on cleaned data)
+    xm, ym, xM, yM, e = findApproxDepletion(sample, dose, V, IC, eIC)
+    # Plot using matplotlib
+    import matplotlib.pyplot as plt
+    plt.figure()
+    # original curve (before removeBadPoints) in red
+    plt.errorbar(V_orig, IC_orig, yerr=eIC_orig, fmt='o', color='red', label='Original')
+    # cleaned curve in blue
+    plt.errorbar(V, IC, yerr=eIC, fmt='o', color='blue', label='Cleaned')
+    # depletion points as green 'o' markers (no connecting line)
+    plt.errorbar([xm, xM], [ym, yM], yerr=[0,0], fmt='o', color='green', label='Depletion points')
+    plt.xlabel('-V [V]')
+    plt.ylabel('diode I [nA]')
+    plt.title(f'{sample} GCD {dose}kGy')
+    plt.legend(loc='best')
+    plt.grid(True)
+    plt.savefig('{}/fit_{}_GCD_{}kGy.png'.format(args.outdir, sample, dose))
+    plt.close()
+    return [yM - ym, e]
 
 def processGCD(args, sample):
-    
+    print(f"Processing sample: {sample}, structure: GCD")
     if sample in args.GCD_exclude:
         return
 
-    gI = ROOT.TGraphErrors()
-    gJ = ROOT.TGraphErrors()
-    gI.SetName('gI')
-    gJ.SetName('gJ')
-
+    doses = []
+    I_values = []
+    J_values = []
+    eI_values = []
+    eJ_values = []
     for dose in args.doses:
-        if dose==0: continue
-        if isGCDexcluded(sample,dose):
+        if dose == 0:
             continue
-        
+        if isGCDexcluded(sample, dose):
+            continue
         Ie = getGCDcurrent(args, sample, dose)
-        if Ie == None : continue
+        if Ie is None:
+            continue
         I = Ie[0]
         e = Ie[1]
-        J = calculate_GCD_parameters(I,sample)
-        gI.SetPoint(gI.GetN(),dose,I)
-        gJ.SetPoint(gJ.GetN(),dose,J)
-        gI.SetPointError(gI.GetN()-1, 0, e)
-        gJ.SetPointError(gJ.GetN()-1, 0, e*J/I)
+        J = calculate_GCD_parameters(I, sample)
+        doses.append(dose)
+        I_values.append(I)
+        J_values.append(J)
+        eI_values.append(e)
+        eJ_values.append(e * J / I if I != 0 else 0)
 
+    # Save to ROOT file as before (keep for compatibility)
+    if len(doses) > 0:
+        from array import array
+        tf = safeOpenFile(f"{args.outfiles}/dose_{sample}_GCD.root", mode='recreate')
+        gI = ROOT.TGraphErrors(len(doses), array('d', doses), array('d', I_values), array('d', [0]*len(doses)), array('d', eI_values))
+        gJ = ROOT.TGraphErrors(len(doses), array('d', doses), array('d', J_values), array('d', [0]*len(doses)), array('d', eJ_values))
+        gI.SetName('gI')
+        gJ.SetName('gJ')
+        gI.Write()
+        gJ.Write()
+        tf.Close()
 
-    tf = safeOpenFile(f"{args.outfiles}/dose_{sample}_GCD.root", mode='recreate')
-    gI.Write()
-    gJ.Write()
-    tf.Close()
+    # Plot with matplotlib
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.errorbar(doses, I_values, yerr=eI_values, fmt='o-', label='GCD current')
+    plt.xlabel('dose [kGy]')
+    plt.ylabel('GCD current [nA]')
+    plt.title(f'{sample} GCD')
+    plt.grid(True)
+    plt.savefig('{}/dose_{}_GCD_I.png'.format(args.outdir, sample))
+    plt.close()
 
-    c = ROOT.TCanvas()
-    gI.SetTitle('{} GCD; dose [kGy]; GCD current [nA]'.format(sample))
-    gI.SetMarkerStyle(7)
-    gI.Draw('apl')
-    c.SaveAs('{}/dose_{}_GCD_I.png'.format(args.outdir, sample))
-    c.Clear()
-    gJ.SetTitle('{} GCD; dose [kGy]; surface velocity [cm/s]'.format(sample))
-    gJ.SetMarkerStyle(7)
-    gJ.Draw('apl')
-    c.SaveAs('{}/dose_{}_GCD_J.png'.format(args.outdir,sample))
+    plt.figure()
+    plt.errorbar(doses, J_values, yerr=eJ_values, fmt='o-', label='surface velocity')
+    plt.xlabel('dose [kGy]')
+    plt.ylabel('surface velocity [cm/s]')
+    plt.title(f'{sample} GCD')
+    plt.grid(True)
+    plt.savefig('{}/dose_{}_GCD_J.png'.format(args.outdir, sample))
+    plt.close()
 
     return
 
@@ -682,6 +733,7 @@ def processSample(args, sample):
 
     if not args.skipStructure == "MOS":
         for structure in structures:
+            print(f"Processing sample: {sample}, structure: {structure}")
             if args.isAnnealing:
                 processMOSannealing(args, sample, structure)
             else:
@@ -744,7 +796,7 @@ if __name__ == "__main__":
     parser.add_argument("--annealing-path-regexp", dest="annealingPathRegexp", type=str, default=".*", help="Use this regex to filter subfolders to be used for annealing plots")
     args = parser.parse_args()
 
-    ROOT.TH1.SetDefaultSumw2()
+    # ROOT.TH1.SetDefaultSumw2()
 
     # print(args.doses)
     # for x in args.doses:
