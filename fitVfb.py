@@ -723,7 +723,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--indir",  type=str, 
-                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/", help="Input folder")
+                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_MOS_GCD/LabView_Setup", help="Input folder")
     parser.add_argument("-o", "--outdir", type=str, 
                         default="./allplots", help="Output folder for plots")
     parser.add_argument("-c", "--configdir", type=str, 
