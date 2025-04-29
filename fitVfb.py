@@ -12,6 +12,7 @@ import constants as cnst
 from functionsAnnealing import *
 
 import argparse
+import numpy as np
 
 
 # Default definitions
@@ -297,17 +298,16 @@ def readFile(path):
         V.append(float(line[0]))
         IC.append(float(line[2]))
         eIC.append(float(line[3]))
-    return [V, IC, eIC]
+    return np.array(V), np.array(IC), np.array(eIC)
 
 def makePlot(args, sample, structure, dose, freq=False):
     path = formPath(args, sample, structure, dose, freq)
     if path is None:
         return
     V, IC, eIC = readFile(path)
-    for i in range(len(V)):
-        if 'GCD' in structure:
-            IC[i] *= -1.
-        V[i] *= -1
+    if 'GCD' in structure:
+        IC = IC * -1
+    V = V * -1
     return V, IC, eIC
 
 
@@ -545,49 +545,40 @@ def calculate_GCD_parameters(I,sample):
 def removeBadPoints(V, IC, eIC, threshold):
     import numpy as np
     # Remove points with large relative errors
-    if max(IC) == min(IC):
+    if np.max(IC) == np.min(IC):
         return V, IC, eIC
-    relerr = [ei / (max(IC) - min(IC)) for ei in eIC]
-    for i, re in enumerate(relerr):
-        if re > threshold:
-            # Remove this point and recurse
-            V_new = V[:i] + V[i+1:]
-            IC_new = IC[:i] + IC[i+1:]
-            eIC_new = eIC[:i] + eIC[i+1:]
-            return removeBadPoints(V_new, IC_new, eIC_new, threshold)
-    return V, IC, eIC
+    relerr = eIC / (np.max(IC) - np.min(IC))
+    mask = relerr <= threshold
+    return V[mask], IC[mask], eIC[mask]
 
 def findApproxDepletion(sample, dose, V, IC, eIC):
     import numpy as np
-    baseline = min(IC)
-    IC_base = [y - baseline for y in IC]
-    maxY = max(IC_base)
-    i = 0
-    for idx, y in enumerate(IC_base):
-        if y > maxY * 0.3:
-            i = idx
-            break
+    baseline = np.min(IC)
+    IC_base = IC - baseline
+    maxY = np.max(IC_base)
+    # Find first index where IC_base > 0.3 * maxY
+    i = np.argmax(IC_base > maxY * 0.3)
     xL = V[i] - 10
     xH = V[i] + 10
     xL, xH = getGCDrange(sample, dose, xL, xH)
-    ym = +999
-    yM = -999
-    xm = -999
-    xM = +999
-    eM = 0
-    em = 0
-    for idx, x in enumerate(V):
-        if x < xL or x > xH:
-            continue
-        if IC_base[idx] > yM:
-            yM = IC_base[idx]
-            eM = eIC[idx]
-            xM = x
-        if IC_base[idx] < ym:
-            ym = IC_base[idx]
-            em = eIC[idx]
-            xm = x
-    return [xm, ym + baseline, xM, yM + baseline, (em ** 2 + eM ** 2) ** 0.5]
+    mask = (V >= xL) & (V <= xH)
+    if not np.any(mask):
+        # fallback: return default values if mask is empty
+        return [np.nan, np.nan, np.nan, np.nan, np.nan]
+    # Find min and max IC_base in the mask region
+    idx_mask = np.where(mask)[0]
+    IC_base_mask = IC_base[mask]
+    V_mask = V[mask]
+    eIC_mask = eIC[mask]
+    idx_min = np.argmin(IC_base_mask)
+    idx_max = np.argmax(IC_base_mask)
+    xm = V_mask[idx_min]
+    ym = IC_base_mask[idx_min] + baseline
+    em = eIC_mask[idx_min]
+    xM = V_mask[idx_max]
+    yM = IC_base_mask[idx_max] + baseline
+    eM = eIC_mask[idx_max]
+    return [xm, ym, xM, yM, np.sqrt(em**2 + eM**2)]
 
 def cutGCDcurve(V, IC, eIC, cut):
     # Remove points from the end where V[-1] > cut
