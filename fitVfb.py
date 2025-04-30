@@ -760,7 +760,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--outdir", type=str, 
                         help="Output folder for plots")
     parser.add_argument("-c", "--configdir", type=str, 
-                        default="./configs", help="Folder with configuration files")
+                        default="./configs_LabView", help="Folder with configuration files")
     parser.add_argument(      "--outfiles", type=str, 
                         help="Output folder for root files (not needed for now for annealing)")
     parser.add_argument("--doses", nargs="*", type=int,
