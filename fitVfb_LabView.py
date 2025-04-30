@@ -5,7 +5,6 @@ plt.style.use(mplhep.style.CMS)
 from copy import *
 from utility import *
 
-from glob import glob
 import os
 import constants as cnst
 
