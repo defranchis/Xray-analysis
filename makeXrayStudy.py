@@ -798,7 +798,7 @@ if __name__ == "__main__":
     elif args.samples == ["CandDose"]:
         samples = list(filter(lambda x: "C EPI" == sast.getSampleAttribute(x, "leg") or "kGy" in sast.getSampleAttribute(x, "leg"), allSamples))
     else:
-        sample = args.samples
+        samples = args.samples
     
     samplesGCD = list(filter(lambda a: a not in args.excludeSamplesGCD, samples)) # might need to make it per sample, usually it is only for the GCD
 
