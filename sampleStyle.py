@@ -36,7 +36,7 @@ def getSampleNames():
     return [x for x in sampleNames.keys()]
 
 def getSampleAttribute(name, key):
-    return sampleNames[name][key];
+    return sampleNames[name][key]
 
 
 # old scheme

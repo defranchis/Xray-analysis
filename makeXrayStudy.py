@@ -14,21 +14,21 @@ sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
-from utility import safeOpenFile, createPlotDirAndCopyPhp, cutGraph, getDerivative, findX
+from utility import safeOpenFile, createPlotDirAndCopyPhp, cutGraph, getDerivative, findX, drawGraphs
 
 import constants as cnst
 import sampleStyle as sast
 
 from functionsAnnealing import getSampleTypeFromName
 
-import argparse
+import argparse, json
 
 default_configdir = "configs_Nov2021/"
 default_indir = "/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_MOS_GCD/logs_obelix_setup/"
 default_outdir = "out_AXIOM/"
 default_exclude_GCD = ['N4789-12_UL']
 
-
+out_sample_dict = dict()
 
 def getSurfaceVelocity(current):
     I = current * 1E-09 # in A from nA
@@ -88,6 +88,9 @@ class siliconSensorSample:
                           "ms" : 20,          # marker style 
                       }
         self.readData()
+
+        with open(f"{args.outdir}/samples_summary.json", "w") as f: #here so that it updates while running
+            json.dump(out_sample_dict, f, indent=1)
 
     def run(self):
         createPlotDirAndCopyPhp(self.plotdir)
@@ -294,7 +297,16 @@ class siliconSensorSample:
         for structure in self.structures:
             for dose in self.doses[structure]:
                 datafile = self.getPath(self.datapath, self.name, structure, dose, self.temperature)
-                #print(datafile)
+
+                if dose == 0:
+                    if not self.name in out_sample_dict.keys():
+                        out_dict = dict()
+                        timestamp = datafile.split("/")[-2].split("_")[1]
+                        out_dict["timestamp"] = timestamp
+                        out_dict["label"] = self.typeName
+                        out_sample_dict[self.name] = out_dict
+
+
                 f = open(datafile,'r')
                 lines = f.read().splitlines()
                 V = []
@@ -367,7 +379,7 @@ class siliconSensorSample:
     #     return J 
 
     def plotData(self):
-        rfName = f"{self.plotdir}/summaryVsDose_{self.name}"
+        rfName = f"{outdirDoseRaw}/summaryVsDose_{self.name}"
         tf = safeOpenFile(f"{rfName}.root", mode='recreate')
         for structure in self.structures:
             tgeVsDose = ROOT.TGraphErrors()
@@ -810,6 +822,9 @@ if __name__ == "__main__":
     if len(samplesGCD) < len(samples):
         print(f">>> Excluding these for GCD: {args.excludeSamplesGCD}")
     print()
+
+    outdirDoseRaw = f"{args.outdir}/raw_summary/"
+    createPlotDirAndCopyPhp(outdirDoseRaw)
 
     sampleDict = {}
     for sample in samples:        
