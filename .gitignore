@@ -1,5 +1,4 @@
 *.pyc
 *~
 zz_*
-allplots
-Vfb_files
+out_*
