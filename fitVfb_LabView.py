@@ -2,13 +2,12 @@ import matplotlib.pyplot as plt
 import mplhep
 plt.style.use(mplhep.style.CMS)
 
-from copy import *
-from utility import *
+from utility import safeOpenFile, createPlotDirAndCopyPhp
 
 import os
 import constants as cnst
 
-from functionsAnnealing import *
+from functionsAnnealing import processMOSannealing
 
 import argparse
 import numpy as np
@@ -311,8 +310,6 @@ def makePlot(args, sample, structure, dose, freq=False):
 
 
 def fitVfb(args, sample, structure, dose, Cox, freq=False):
-
-    import numpy as np
     VIC = makePlot(args, sample, structure, dose, freq)
     if VIC is None:
         return
@@ -471,7 +468,6 @@ def processMOS(args, sample, structure, Cox, freq=False):
 
     # Save to ROOT file as before (keep for compatibility)
     if len(doses) > 0:
-        from array import array
         rfName = f"{args.outfiles}/dose_{sample}_{structure}"
         if freq:
             rfName += "_1kHz"
@@ -485,7 +481,6 @@ def processMOS(args, sample, structure, Cox, freq=False):
         tf.Close()
 
     # Plot with matplotlib
-    import matplotlib.pyplot as plt
     plt.figure()
     plt.plot(doses, Vfb_values, 'o-', label='Vfb')
     plt.xlabel('dose [kGy]')
@@ -542,7 +537,6 @@ def calculate_GCD_parameters(I,sample):
     return J 
 
 def removeBadPoints(V, IC, eIC, threshold):
-    import numpy as np
     # Remove points with large relative errors
     if np.max(IC) == np.min(IC):
         return V, IC, eIC
@@ -551,7 +545,6 @@ def removeBadPoints(V, IC, eIC, threshold):
     return V[mask], IC[mask], eIC[mask]
 
 def findApproxDepletion(sample, dose, V, IC, eIC):
-    import numpy as np
     baseline = np.min(IC)
     IC_base = IC - baseline
     maxY = np.max(IC_base)
@@ -596,7 +589,6 @@ def cutGCDcurveLow(V, IC, eIC, cut):
     return V, IC, eIC
 
 def getGCDcurrent(args, sample, dose):
-    import numpy as np
     result = makePlot(args, sample, 'GCD', dose)
     if result is None:
         return
@@ -625,7 +617,6 @@ def getGCDcurrent(args, sample, dose):
     # Find depletion points (on cleaned data)
     xm, ym, xM, yM, e = findApproxDepletion(sample, dose, V, IC, eIC)
     # Plot using matplotlib
-    import matplotlib.pyplot as plt
     plt.figure()
     # original curve (before removeBadPoints) in red
     plt.errorbar(V_orig, IC_orig, yerr=eIC_orig, fmt='o', color='red', label='Original')
@@ -671,7 +662,6 @@ def processGCD(args, sample):
 
     # Save to ROOT file as before (keep for compatibility)
     if len(doses) > 0:
-        from array import array
         tf = safeOpenFile(f"{args.outfiles}/dose_{sample}_GCD.root", mode='recreate')
         gI = ROOT.TGraphErrors(len(doses), array('d', doses), array('d', I_values), array('d', [0]*len(doses)), array('d', eI_values))
         gJ = ROOT.TGraphErrors(len(doses), array('d', doses), array('d', J_values), array('d', [0]*len(doses)), array('d', eJ_values))
@@ -682,7 +672,6 @@ def processGCD(args, sample):
         tf.Close()
 
     # Plot with matplotlib
-    import matplotlib.pyplot as plt
     plt.figure()
     plt.errorbar(doses, I_values, yerr=eI_values, fmt='o-', label='GCD current')
     plt.xlabel('dose [kGy]')

@@ -7,7 +7,7 @@ sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
-from utility import *
+from utility import cutGraph, findX
 import os
 
 def getSampleTypeFromName(name):
