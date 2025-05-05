@@ -7,49 +7,20 @@
 
 ## safe batch mode
 import sys
-args = sys.argv[:]
-sys.argv = ['-b']
 import ROOT
-sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
-from copy import *
-from utility import *
+import utility
 
-from glob import glob
 import os
 import constants as cnst
 import sampleStyle as sast
 
-from functionsAnnealing import *
-
 import argparse
+import utils
 
-
-def getSurfaceVelocity(current):
-    I = current * 1E-09 # in A from nA
-    A = cnst.A_GCD
-    A *= 1E-6 # in m^2
-    ni = cnst.ni * 1E+06 # in m^-3
-    J = I / (cnst.q*ni*A) # in m/s
-    J *= 100 # in cm/s
-    return J
-
-
-def getOxideChargeDensity(V_fb, structure, C_ox):
-
-    if structure not in ['MOShalf', 'MOS2000']:
-        print(f"Error in getOxideChargeDensity, unexpected structure {structure}")
-    A = cnst.A_MOShalf if structure == 'MOShalf' else cnst.A_MOS2000
-    A *= 1E-6 # in m^2
-    C_ox -= cnst.approx_openC
-    C_ox *= 1E-12 # in F from pF
-    phi_s = cnst.Chi + cnst.Eg/2. + cnst.KbTn20*ROOT.log(cnst.NA/cnst.ni)
-    phi_ms = cnst.phi_m - phi_s
-    N_ox = C_ox / (A*cnst.q) * (phi_ms + V_fb) # 1/m^2
-    N_ox *= 1E-04 # in 1/cm^2
-    return N_ox
+default_samples = ['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR']
 
 
 class siliconSensorSample:
@@ -59,9 +30,9 @@ class siliconSensorSample:
         self.typeName = self.getTypeName()
         self.typeNameGoodString = self.typeName.replace(' ','_').replace('#','v').replace('/','_').replace('(','_').replace(')','_') 
         self.title = name if title == None else title
-        self.datapath = self.options.indir # usually /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/logs_obelix_setup/
+        self.datapath = self.options.indir # usually /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_MOS_GCD/logs_obelix_setup/
         self.temperature = temperature # temperature for measurement, usually -20 C
-        self.structures = list(filter(lambda s: s != "GCD" or not noGCD, self.options.structures)) # usuallly ['MOShalf','MOS2000', 'GCD']
+        self.structures = list(filter(lambda s: s != "GCD" or not noGCD, self.options.structures)) # usually ['MOShalf','MOS2000', 'GCD']
         self.configdir = self.options.configdir
         self.plotdir = f"{self.options.outdir}/{self.typeNameGoodString}_{self.name}"
         self.GCD_cuts = []
@@ -87,7 +58,7 @@ class siliconSensorSample:
         self.readData()
 
     def run(self):
-        createPlotDirAndCopyPhp(self.plotdir)
+        utility.createPlotDirAndCopyPhp(self.plotdir)
         self.plotData()
         self.makeAltGraph()
         #if "EPI" in self.typeName:
@@ -365,7 +336,7 @@ class siliconSensorSample:
 
     def plotData(self):
         rfName = f"{self.plotdir}/summaryVsDose_{self.name}"
-        tf = safeOpenFile(f"{rfName}.root", mode='recreate')
+        tf = utility.safeOpenFile(f"{rfName}.root", mode='recreate')
         for structure in self.structures:
             tgeVsDose = ROOT.TGraphErrors()
             tgeVsDose.SetName(f"{self.name}_{structure}")
@@ -430,14 +401,14 @@ class siliconSensorSample:
             if "MOS" in structure:
                 for i,x in enumerate(allXvalues):
                     Vfb = allYvalues[i]
-                    Nox = getOxideChargeDensity(Vfb, structure, self.Cox[structure])
+                    Nox = utils.getOxideChargeDensity(Vfb, structure, self.Cox[structure])
                     tmp.SetPoint(i, x, Nox)
                     tmp.SetPointError(i, self.graphsVsDose[structure].GetErrorX(i), self.graphsVsDose[structure].GetErrorY(i) * Nox / Vfb)
                 tmp.GetYaxis().SetTitle("Oxide charge density [cm^{-2 }]")
             else:
                 for i,x in enumerate(allXvalues):
                     current = allYvalues[i]
-                    surfV = getSurfaceVelocity(current)
+                    surfV = utils.getSurfaceVelocity(current)
                     tmp.SetPoint(i, x, surfV)
                     tmp.SetPointError(i, self.graphsVsDose[structure].GetErrorX(i), self.graphsVsDose[structure].GetErrorY(i) * surfV / current)
                 tmp.GetYaxis().SetTitle("Surface velocity [cm/s]")
@@ -604,7 +575,7 @@ class siliconSensorSample:
     def fitVfb(self, structure, dose):
 
         tge = self.graphsSingleDose[structure][dose]
-        tge = cutGraph(tge)
+        tge = utility.cutGraph(tge)
 
         c = ROOT.TCanvas()
         c.SetRightMargin(0.06)
@@ -612,7 +583,7 @@ class siliconSensorSample:
         c.SetTicky(1)
 
         plotnameTag = f"{self.plotdir}/fit_{self.name}_{structure}_{dose}kGy"
-        slope = getDerivative(tge)
+        slope = utility.getDerivative(tge)
         slope.GetXaxis().SetTitle("Voltage [-V]")
         slope.GetYaxis().SetTitle("#Delta C / #Delta V [pF/V]")
         slope.GetXaxis().SetTitleSize(0.045)
@@ -761,7 +732,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-dose", dest="maxDose", type=int, 
                         default=-1, help="Maximum dose to use for all samples, negative means to use all")
     # samples
-    parser.add_argument("-s", "--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
+    parser.add_argument("-s", "--samples", nargs="+", default=default_samples, help=f"List of samples to be used (default: {default_samples})")
     parser.add_argument("--xs", "--exclude-samples-GCD", dest="excludeSamplesGCD", nargs="*", default=['N4789-12_UL'], help="List of samples to be excluded for GCD")
     #parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL'], help="List of samples to be used")
     parser.add_argument("--structures", nargs="+", default=['MOShalf','MOS2000','GCD'], help="List of structures to use")
@@ -819,7 +790,7 @@ if __name__ == "__main__":
         sampleDict[sample].setPlotStyle("lw", sast.getSampleAttribute(sample, "lw"))
     
     outdirSummary = f"{args.outdir}/summary/"
-    createPlotDirAndCopyPhp(outdirSummary)
+    utility.createPlotDirAndCopyPhp(outdirSummary)
     
     canvas = ROOT.TCanvas("canvas","",1200,800)
     canvas.SetTickx(1)
@@ -857,13 +828,13 @@ if __name__ == "__main__":
             # at some point I should make this inclusion a little less hardcoded
             if args.compareOldSample:
                 sampleExt = "N0538_25_LR"
-                tf = safeOpenFile(f"tmpRootFiles/dose_{sampleExt}_{structure}.root")
+                tf = utility.safeOpenFile(f"tmpRootFiles/dose_{sampleExt}_{structure}.root")
                 objname = None
                 if "MOS" in structure:
                     objname = "gNox" if altGraph else "gVfb"
                 else:
                     objname = "gJ" if altGraph else "gI"
-                graphExt = safeGetObject(tf, objname, detach=False)
+                graphExt = utility.safeGetObject(tf, objname, detach=False)
                 tf.Close()
                 graphs.append(graphExt)
                 legendEntries.append(getSampleTypeFromName(sampleExt))
@@ -933,7 +904,7 @@ if __name__ == "__main__":
             #print(f"minX = {minX};   maxX = {maxX};   minY = {minY};   maxY = {maxY}")
             postfix = "_alt" if altGraph else ""
             ROOT.TGaxis.SetExponentOffset(-0.06, 0.00, "y") # X and Y offset for Y axis
-            drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}", outdirSummary, 
+            utility.drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}", outdirSummary, 
                        legendEntries=legendEntries, legendCoords=legCoords,
                        vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths,
                        passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
@@ -963,7 +934,7 @@ if __name__ == "__main__":
                 yRatioTitle = str(yTitle.split("[")[0]) + f"ratio over {sampleDict[args.addRatio].getTypeName()}"
                 if args.samples == ["CandDose"] and "reference" in sampleDict[args.addRatio].getTypeName():
                     yRatioTitle = str(yTitle.split("[")[0]) + f"ratio over reference"
-                drawGraphs(ratioGraphs, f"{xTitle}::{minX},{maxXratio}", f"{yRatioTitle}::{minYratio},{maxYratio}", f"summaryVsDose_compareSamples_{structure}{postfix}_ratio", outdirSummary, 
+                utility.drawGraphs(ratioGraphs, f"{xTitle}::{minX},{maxXratio}", f"{yRatioTitle}::{minYratio},{maxYratio}", f"summaryVsDose_compareSamples_{structure}{postfix}_ratio", outdirSummary, 
                            legendEntries=legendEntries, legendCoords=legCoords,
                            vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths,
                            passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)
@@ -979,7 +950,7 @@ if __name__ == "__main__":
                 legCoords = f"{minxleg},{minyLeg},{maxxleg},{maxyLeg}"
                 maxY *= 1.5 # 3.0
                 minY = 0.8 * minY
-                drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}_logY", outdirSummary, 
+                utility.drawGraphs(graphs, f"{xTitle}::{minX},{maxX}", f"{yTitle}::{minY},{maxY}", f"summaryVsDose_compareSamples_{structure}{postfix}_logY", outdirSummary, 
                            legendEntries=legendEntries, legendCoords=legCoords,
                            vecColors=colors, vecMarkerStyle=markers, vecLineStyle=lineStyles, vecLineWidth=lineWidths, 
                            passCanvas=canvas, moreText=f"Structure: {structure}", useLogX=useLogX, useLogY=useLogY)

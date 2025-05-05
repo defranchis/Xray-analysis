@@ -1,9 +1,6 @@
 ## safe batch style
 import sys
-args = sys.argv[:]
-sys.argv = ['-b']
 import ROOT
-sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
