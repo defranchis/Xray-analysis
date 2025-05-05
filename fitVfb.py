@@ -7,30 +7,30 @@ sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
-from copy import *
-from utility import *
+from utility import safeOpenFile, createPlotDirAndCopyPhp, cutGraph, findX
 
-from glob import glob
 import os
 import constants as cnst
 
-from functionsAnnealing import *
+from functionsAnnealing import processMOSannealing
 
 import argparse
 
-# now passed with options
-# indir = '/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/' # now in Results_Xray/, no longer in Data/
-# outdir = 'allplots'
-# outfiles = 'Vfb_files'
+default_configdir = 'configs_LabView'
+default_indir = '/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_MOS_GCD/LabView_Setup/'
 
-# doses = [0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030]
+prefix = 'out_LabView'
+default_outdir = './{}/allplots'.format(prefix)
+default_outfiles = './{}/Vfb_files'.format(prefix)
 
-# samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR',
-#            '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
-#            '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
+default_doses = [0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030]
 
-# GCD_exclude = ['1008_LR','1113_LR','1105_LR','1112_LR']
-# MOS_exclude = ['1012_UL']
+default_samples = ['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR',
+                   '3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR',
+                   '3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL']
+
+default_GCD_exclude = ['1008_LR','1113_LR','1105_LR','1112_LR']
+default_MOS_exclude = ['1012_UL']
 
 def checkGoodList(args, ls):
     for i,l1 in enumerate(ls):
@@ -723,21 +723,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--indir",  type=str, 
-                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray/", help="Input folder")
+                        default=default_indir, help="Input folder with data files")
     parser.add_argument("-o", "--outdir", type=str, 
-                        default="./allplots", help="Output folder for plots")
+                        default=default_outdir, help="Output folder for plots")
     parser.add_argument("-c", "--configdir", type=str, 
-                        default="./configs", help="Folder with configuration files")
+                        default=default_configdir, help="Configuration folder with good lists")
     parser.add_argument(      "--outfiles", type=str, 
-                        default="./Vfb_files", help="Output folder for root files (not needed for now for annealing)")
-    parser.add_argument("--doses", nargs="*", type=int, default=[0,1,2,5,10,15,20,30,40,70,100,181,200,394,436,509,749,762,1030],
-                        help="Comma separated list of irradiation doses in kGy")
+                        default=default_outfiles, help="Output folder for Vfb files")
+    parser.add_argument("--doses", nargs="*", type=int, default=default_doses, help="Comma separated list of irradiation doses in kGy")
     # samples
-    parser.add_argument("--samples", nargs="+", default=['1006_LR','1008_LR','1009_LR','1010_UL','1011_LR','1003_LR','1113_LR','3009_LR','3001_UL','1112_LR','3003_UL','3103_LR','1109_LR','1105_LR','3101_LR','3010_LR','24_E_MOS','23_SE_GCD','N0538_25_LR','3007_UL','1012_UL'], help="List of samples to be used")
+    parser.add_argument("--samples", nargs="+", default=default_samples, help="List of samples to be used")
     # GCD to exclude from sample list above 
-    parser.add_argument("--GCD-exclude", dest="GCD_exclude", nargs="*", default=['1008_LR','1113_LR','1105_LR','1112_LR'], help="List of samples to be used")
+    parser.add_argument("--GCD-exclude", dest="GCD_exclude", nargs="*", default=default_GCD_exclude, help="List of GCD measurements to be excluded")
     # MOS to exclude from sample list above
-    parser.add_argument("--MOS-exclude", dest="MOS_exclude", nargs="*", default=['1012_UL'], help="List of samples to be used")
+    parser.add_argument("--MOS-exclude", dest="MOS_exclude", nargs="*", default=default_MOS_exclude, help="List of MOS measurements to be excluded")
     parser.add_argument("--skip", dest="skipStructure", choices=["", "MOS", "GCD"],
                         default="", help="To exclude completely one kind of structure and be faster")
     parser.add_argument("-a", "--is-annealing", dest="isAnnealing", action="store_true", help="Run code on annealing data")
@@ -745,17 +744,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ROOT.TH1.SetDefaultSumw2()
-
-    # print(args.doses)
-    # for x in args.doses:
-    #     if not isinstance(x, int):
-    #         print("%s is not integer!" % str(x))
-    # print(args.samples)
-    # quit()
-
-    # print(args.GCD_exclude)
-    # print(f"len = {len(args.GCD_exclude)}")
-    # quit()
 
     if args.isAnnealing:
         print()
