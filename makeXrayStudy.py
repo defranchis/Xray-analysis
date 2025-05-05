@@ -6,7 +6,7 @@
 # python3 makeXrayStudy.py -i /eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/ -c configs_Nov2021/ -o plots/forMatteoAtMoriond/onlyFZ_noRepetition/ --samples 'FZnor' -r 'N4791-6_UL'
 
 ## safe batch mode
-import sys
+import sys, os, re
 args = sys.argv[:]
 sys.argv = ['-b']
 import ROOT
@@ -14,17 +14,20 @@ sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
-from copy import *
-from utility import *
+from utility import safeOpenFile, createPlotDirAndCopyPhp, cutGraph, getDerivative, findX
 
-from glob import glob
-import os
 import constants as cnst
 import sampleStyle as sast
 
-from functionsAnnealing import *
+from functionsAnnealing import getSampleTypeFromName
 
 import argparse
+
+default_configdir = "configs_Nov2021/"
+default_indir = "/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_MOS_GCD/logs_obelix_setup/"
+default_outdir = "out_AXIOM/"
+default_exclude_GCD = ['N4789-12_UL']
+
 
 
 def getSurfaceVelocity(current):
@@ -753,16 +756,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--indir",  type=str, 
-                        default="/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_bkup01Nov2021/logs_obelix_setup/", help="Input folder")
+                        default=default_indir, help="Input folder")
     parser.add_argument("-o", "--outdir", type=str, 
-                        default="./allplots", help="Output folder for plots")
-    parser.add_argument("-c", "--configdir", type=str, 
-                        default=None, help="Folder with configuration files")
+                        default=default_outdir, help="Output folder for plots")
+    parser.add_argument("-c", "--configdir", type=str, default=default_configdir, help="Folder with configuration files")
     parser.add_argument("--max-dose", dest="maxDose", type=int, 
                         default=-1, help="Maximum dose to use for all samples, negative means to use all")
     # samples
-    parser.add_argument("-s", "--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL','N4790-13_LR','N4789-10_UL','N4790-1_LR','N4790-13_UL','N4791-6_LR','N4788-9_LR'], help="List of samples to be used")
-    parser.add_argument("--xs", "--exclude-samples-GCD", dest="excludeSamplesGCD", nargs="*", default=['N4789-12_UL'], help="List of samples to be excluded for GCD")
+    parser.add_argument("-s", "--samples", nargs="+", default=["all"], help="List of samples to be used")
+    parser.add_argument("--xs", "--exclude-samples-GCD", dest="excludeSamplesGCD", nargs="*", default=default_exclude_GCD, help="List of samples to be excluded for GCD")
     #parser.add_argument("--samples", nargs="+", default=['N4791-1_LR','N4790-1_UL','N4791-6_UL'], help="List of samples to be used")
     parser.add_argument("--structures", nargs="+", default=['MOShalf','MOS2000','GCD'], help="List of structures to use")
     parser.add_argument("--compare-old-sample", dest="compareOldSample", action="store_true", default=False, help="Add comparison to an older sample (graphs read from root files directly)")
@@ -798,7 +800,7 @@ if __name__ == "__main__":
     elif args.samples == ["CandDose"]:
         samples = list(filter(lambda x: "C EPI" == sast.getSampleAttribute(x, "leg") or "kGy" in sast.getSampleAttribute(x, "leg"), allSamples))
     else:
-        sample = args.samples
+        samples = allSamples if args.samples == ["all"] else args.samples
     
     samplesGCD = list(filter(lambda a: a not in args.excludeSamplesGCD, samples)) # might need to make it per sample, usually it is only for the GCD
 
