@@ -28,7 +28,7 @@ sampleNames = {
     'N4788-9_LR'  : {'leg': 'D EPI',            'lw'  : 2, 'ls'  : 7, 'lc'  : ROOT.kBlue,     'ms' : ROOT.kOpenSquare},
     '102180'  : {'leg': 'C prime (long) Aug23',            'lw'  : 2, 'ls'  : 7, 'lc'  : ROOT.kBlue,     'ms' : ROOT.kOpenCircle},
     '102179'  : {'leg': 'C prime Aug23',            'lw'  : 2, 'ls'  : 7, 'lc'  : ROOT.kBlue,     'ms' : ROOT.kFullCircle},
-    '102169'  : {'leg': 'C (problematic)',            'lw'  : 2, 'ls'  : 7, 'lc'  : ROOT.kOrange,     'ms' : ROOT.kOpenCircle},
+    #'102169'  : {'leg': 'C (problematic)',            'lw'  : 2, 'ls'  : 7, 'lc'  : ROOT.kOrange,     'ms' : ROOT.kOpenCircle},
     '102168'  : {'leg': 'C (reference) Aug23',            'lw'  : 2, 'ls'  : 7, 'lc'  : ROOT.kOrange,     'ms' : ROOT.kFullCircle},
 }
 
