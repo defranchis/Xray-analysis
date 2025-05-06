@@ -413,6 +413,26 @@ class siliconSensorSample:
                     #tgeVsDose.SetPointError(tgeVsDose.GetN()-1, 0, err*J/current)
 
             self.graphsVsDose[structure] = tgeVsDose
+            # --- Begin: generate and store alternate graphs with oxide charge density or surface velocity
+            altGraph = tgeVsDose.Clone(f"{tgeVsDose.GetName()}_alt")
+            if "MOS" in structure:
+                for i in range(altGraph.GetN()):
+                    Vfb = altGraph.GetY()[i]
+                    dose = altGraph.GetX()[i]
+                    Nox = getOxideChargeDensity(Vfb, structure, self.Cox[structure])
+                    altGraph.SetPoint(i, dose, Nox)
+                    altGraph.SetPointError(i, altGraph.GetErrorX(i), altGraph.GetErrorY(i) * Nox / Vfb)
+                altGraph.GetYaxis().SetTitle("Oxide charge density [cm^{-2}]")
+            else:
+                for i in range(altGraph.GetN()):
+                    current = altGraph.GetY()[i]
+                    dose = altGraph.GetX()[i]
+                    surfV = getSurfaceVelocity(current)
+                    altGraph.SetPoint(i, dose, surfV)
+                    altGraph.SetPointError(i, altGraph.GetErrorX(i), altGraph.GetErrorY(i) * surfV / current)
+                altGraph.GetYaxis().SetTitle("Surface velocity [cm/s]")
+            self.graphsVsDose_alt[structure] = altGraph
+            # --- End: alternate graph generation
 
             c = ROOT.TCanvas()
             c.SetRightMargin(0.06)
@@ -430,6 +450,7 @@ class siliconSensorSample:
             for ext in ["png", "pdf"]:
                 c.SaveAs(f"{cName}.{ext}")
             self.graphsVsDose[structure].Write(f"{self.name}_{structure}")
+            self.graphsVsDose_alt[structure].Write(f"{self.name}_{structure}_params")
             c.Clear()
 
         tf.Close()

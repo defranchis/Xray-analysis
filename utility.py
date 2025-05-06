@@ -31,7 +31,7 @@ def safeGetObject(fileObject, objectName, quitOnFail=True, silent=False, detach=
     else:
         if detach and hasattr(obj, "SetDirectory"):
             obj.SetDirectory(0)
-        return obj
+    return obj
         
 def safeOpenFile(fileName, quitOnFail=True, silent=False, mode="READ"):
     fileObject = ROOT.TFile.Open(fileName, mode)
