@@ -49,6 +49,10 @@ def TGraphToNumpy(graph, errors=False):
         "ex": np.frombuffer(graph.GetEX(), count=n, dtype=np.double) if errors else np.zeros(n),
         "ey": np.frombuffer(graph.GetEY(), count=n, dtype=np.double) if errors else np.zeros(n)
     }
+    if min(result["x"]) == 0:
+        for key in result.keys():
+            result[key] = result[key][1:]
+        
     return result
 
 def readAllGraphsFromFile(sample_type):
