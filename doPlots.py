@@ -2,9 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+import mplhep
+plt.style.use(mplhep.style.CMS)
+
+
 import samples_LabView as sLV
 
 from utility import safeOpenFile, safeGetObject
+
+comparison_types = ['types', 'HGCAL_std', 'detectors', 'all']
 
 
 getAllSamples = {
@@ -49,10 +55,47 @@ def readAllGraphsFromFile(sample_type):
     np_graph_dict = {sample: TGraphToNumpy(graph, errors=True if sample_type == 'GCD' else False) for sample, graph in graph_dict.items()}
     return np_graph_dict
 
+def getColorAndMarker(sample):
+    tag = sLV.sample_tags[sample]["tag"]
+    color = sLV.tag_styles[tag]["color"]
+    marker = sLV.tag_styles[tag]["marker"]
+    return color, marker
 
-def plotGraphs(np_graph_dict, sample_type):
-    plt.figure(figsize=(10, 6))
+def comparisonTypePass(sample, comparison_type):
+    sample_tag = sLV.sample_tags[sample]["tag"]
+    if comparison_type == "types":
+        if 'Type' in sample_tag:
+            return True
+        if 'FZ -5V' in sample_tag:
+            return True
+        return False
+    elif comparison_type == "HGCAL_std":
+        if 'FZ' in sample_tag:
+            return True
+        if 'EPI' in sample_tag:
+            return True
+        return False
+    elif comparison_type == "detectors":
+        if 'FZ -5V' in sample_tag:
+            return True
+        if 'Tracker' in sample_tag:
+            return True
+        if 'HGCAL' in sample_tag:
+            return True
+        if 'New Type C' in sample_tag:
+            return True
+        return False
+    elif comparison_type == "all":
+        return True
+    else:
+        raise ValueError(f"Invalid comparison type: {comparison_type}. Choose from {comparison_types}")
+
+
+    pass
+
+def plotGraphs(np_graph_dict, sample_type,comparison_type):
     for sample, data in np_graph_dict.items():
+        if not comparisonTypePass(sample, comparison_type): continue
         x = data["x"]
         y = data["y"]
         ex = data["ex"]
@@ -60,17 +103,19 @@ def plotGraphs(np_graph_dict, sample_type):
         if max(x) > 100: continue #hardcoded for now
         #if sample_type == "floating" and max(x) != 100: continue
         if "(rep.)" in sLV.sample_tags[sample]["tag"]: continue
-        plt.errorbar(x, y, xerr=ex, yerr=ey, label=sLV.sample_tags[sample]["tag"])
-    plt.xlabel("X-axis label")
-    plt.ylabel("Y-axis label")
-    plt.title(f"Comparison of {sample_type} samples")
+        color, marker = getColorAndMarker(sample)
+        plt.errorbar(x, y, xerr=ex, yerr=ey, label=sLV.sample_tags[sample]["tag"], color=color, marker=marker)
+    plt.xlabel("Dose [kGy]")
+    plt.ylabel("Surface velocity [cm/s]" if sample_type == "GCD" else "Oxide charge density [cm$^{-2}$]")
     plt.legend()
     plt.xscale("log")
+    plt.grid(which='both', linestyle='--', linewidth=0.5)
     if sample_type == "GCD":
         plt.yscale("log")
     plt.xlim(left=1)
     os.makedirs("out_plots", exist_ok=True)
-    plt.savefig(f"out_plots/comparison_LabView_{sample_type}.png")
+    plt.savefig(f"out_plots/comparison_LabView_{sample_type}_{comparison_type}.pdf")
+    plt.savefig(f"out_plots/comparison_LabView_{sample_type}_{comparison_type}.png")
     plt.close()
 
 
@@ -78,10 +123,8 @@ def doComparisonPlot(sample_type):
     if not sample_type in getAllSamples.keys():
         raise ValueError(f"Invalid sample type: {sample_type}. Choose from {list(getAllSamples.keys())}")
     np_graph_dict = readAllGraphsFromFile(sample_type)
-    plotGraphs(np_graph_dict, sample_type)
-
-
-
+    for comparison_type in comparison_types:
+        plotGraphs(np_graph_dict, sample_type, comparison_type)
 
 
 def main():
