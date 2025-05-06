@@ -98,8 +98,6 @@ def comparisonTypePass(sample, comparison_type):
         raise ValueError(f"Invalid comparison type: {comparison_type}. Choose from {comparison_types}")
 
 
-    pass
-
 def addSecondaryLabel(label, comparison_type, sample_type ):
     if comparison_type != "all":
         pos_x = 0.9
