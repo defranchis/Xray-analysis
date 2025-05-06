@@ -11,6 +11,8 @@ import samples_LabView as sLV
 from utility import safeOpenFile, safeGetObject
 
 comparison_types = ['types', 'HGCAL_std', 'detectors', 'all']
+out_dir = "out_plots/LabView"
+os.makedirs(out_dir, exist_ok=True)
 
 
 getAllSamples = {
@@ -119,9 +121,8 @@ def plotGraphs(np_graph_dict, sample_type,comparison_type):
     if sample_type == "GCD": label = 'Floating GCD'
     plt.text(0.9, 0.3, label, transform=plt.gca().transAxes, fontsize=25, fontweight='bold',
              verticalalignment='top', horizontalalignment='right')
-    os.makedirs("out_plots", exist_ok=True)
-    plt.savefig(f"out_plots/comparison_LabView_{sample_type}_{comparison_type}.pdf")
-    plt.savefig(f"out_plots/comparison_LabView_{sample_type}_{comparison_type}.png")
+    plt.savefig(os.path.join(out_dir, f"comparison_LabView_{sample_type}_{comparison_type}.pdf"))
+    plt.savefig(os.path.join(out_dir, f"comparison_LabView_{sample_type}_{comparison_type}.png"))
     plt.close()
 
 
@@ -130,7 +131,9 @@ def doComparisonPlot(sample_type):
         raise ValueError(f"Invalid sample type: {sample_type}. Choose from {list(getAllSamples.keys())}")
     np_graph_dict = readAllGraphsFromFile(sample_type)
     for comparison_type in comparison_types:
+        print(f"Plotting {sample_type} for comparison type: {comparison_type}")
         plotGraphs(np_graph_dict, sample_type, comparison_type)
+    print()
 
 
 def main():
