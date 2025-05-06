@@ -14,7 +14,7 @@ sample_tags = {
     "3010_LR":  {"tag": "HGCAL 6inch -5V",          "structures": ["MOShalf", "MOS2000", "GCD"]},
     "23_SE_GCD": {"tag": "Tracker -2V",             "structures": [None, "MOS", "GCD"]},
     "24_E_MOS": {"tag": "Tracker -2V",              "structures": ["MOSc1", None, None]},
-    "N0538_25_LR": {"tag": "New Type C",            "structures": ["MOShalf", "MOS2000", "GCD"]}
+    "N0538_25_LR": {"tag": "New Type C -2V",            "structures": ["MOShalf", "MOS2000", "GCD"]}
 }
 
     #"1003_LR":  {"tag": "FZ -2V (rep.)",            "structures": ["MOShalf", "MOS2000", "GCD"]},
@@ -39,7 +39,7 @@ tag_styles = {
     "Type E -5V":           {"color": "green",      "marker": ">"},
     "HGCAL 6inch -5V":      {"color": "blue",       "marker": "v"},
     "Tracker -2V":          {"color": "cyan",       "marker": "^"},
-    "New Type C":           {"color": "darkorange", "marker": "D"},
+    "New Type C -2V":           {"color": "darkorange", "marker": "D"},
 }
 
 def getAllFloatingMOS():
