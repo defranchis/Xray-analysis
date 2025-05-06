@@ -23,7 +23,7 @@ from functionsAnnealing import getSampleTypeFromName
 
 import argparse, json
 
-default_configdir = "configs_Nov2021/"
+default_configdir = "configs_AXIOM/"
 default_indir = "/eos/user/h/hgsensor/HGCAL_test_results/Results_Xray_MOS_GCD/logs_obelix_setup/"
 default_outdir = "out_AXIOM/"
 default_exclude_GCD = ['N4789-12_UL']
