@@ -14,7 +14,7 @@ sys.argv = args
 ROOT.gROOT.SetBatch(True)
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 
-from utility import safeOpenFile, createPlotDirAndCopyPhp, cutGraph, getDerivative, findX, drawGraphs
+from utility import safeOpenFile, createPlotDirAndCopyPhp, cutGraph, getDerivative, findX, drawGraphs, safeGetObject
 
 import constants as cnst
 import sampleStyle as sast

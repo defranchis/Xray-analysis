@@ -29,7 +29,7 @@ def safeGetObject(fileObject, objectName, quitOnFail=True, silent=False, detach=
         if quitOnFail:
             quit()
     else:
-        if detach:
+        if detach and hasattr(obj, "SetDirectory"):
             obj.SetDirectory(0)
         return obj
         
