@@ -4,6 +4,7 @@ import os
 
 import mplhep
 plt.style.use(mplhep.style.CMS)
+plt.rcParams["text.usetex"] = True
 
 
 import samples_LabView as sLV
@@ -99,6 +100,20 @@ def comparisonTypePass(sample, comparison_type):
 
     pass
 
+def addSecondaryLabel(label, comparison_type, sample_type ):
+    if comparison_type != "all":
+        pos_x = 0.9
+        pos_y = 0.3
+        if comparison_type == "types" and sample_type == "biased":
+            pos_x = 0.97
+            pos_y = 0.47
+        plt.text(pos_x, pos_y, r"\textbf{"+label+"}", transform=plt.gca().transAxes, fontsize=25,
+                 verticalalignment='top', horizontalalignment='right')
+
+def addPrimaryLabel():
+    plt.text(1, 1.06 , r"\textbf{HGCAL} \textit{Preliminary}", transform=plt.gca().transAxes, fontsize=25,
+             verticalalignment='top', horizontalalignment='right')
+
 def plotGraphs(np_graph_dict, sample_type,comparison_type):
     for sample, data in np_graph_dict.items():
         if not comparisonTypePass(sample, comparison_type): continue
@@ -119,14 +134,13 @@ def plotGraphs(np_graph_dict, sample_type,comparison_type):
     if sample_type == "GCD":
         plt.yscale("log")
     plt.xlim(left=1)
-    plt.text(1, 1.06 , "HGCAL Preliminary", transform=plt.gca().transAxes, fontsize=25,
-             verticalalignment='top', horizontalalignment='right')
-    label = 'Floating MOS' if sample_type == "floating" else 'Biased MOS (+10V)'
+    addPrimaryLabel()
+    label = 'Floating MOS' if sample_type == "floating" else 'Biased MOS [+10V]'
     if sample_type == "GCD": label = 'Floating GCD'
-    plt.text(0.9, 0.3, label, transform=plt.gca().transAxes, fontsize=25, fontweight='bold',
-             verticalalignment='top', horizontalalignment='right')
+    addSecondaryLabel(label, comparison_type, sample_type)
     plt.savefig(os.path.join(out_dir, f"comparison_LabView_{sample_type}_{comparison_type}.pdf"))
     plt.savefig(os.path.join(out_dir, f"comparison_LabView_{sample_type}_{comparison_type}.png"))
+    plt.clf()
     plt.close()
 
 
