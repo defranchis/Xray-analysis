@@ -22,6 +22,17 @@ getAllSamples = {
     "GCD": sLV.getAllGCD
 }
 
+
+def getPlotLabel(sample_type):
+    if sample_type == "floating":
+        return 'Floating MOS'
+    elif sample_type == "biased":
+        return 'Biased MOS'
+    elif sample_type == "GCD":
+        return 'Floating GCD'
+    else:
+        raise ValueError(f"Invalid sample type: {sample_type}")
+    
 def getNameFromType(sample, sample_type):
     if sample_type not in getAllSamples.keys():
         raise ValueError(f"Invalid sample type: {sample_type}. Choose from {list(getAllSamples.keys())}")
@@ -98,15 +109,9 @@ def comparisonTypePass(sample, comparison_type):
         raise ValueError(f"Invalid comparison type: {comparison_type}. Choose from {comparison_types}")
 
 
-def addSecondaryLabel(label, comparison_type, sample_type ):
-    if comparison_type != "all":
-        pos_x = 0.9
-        pos_y = 0.3
-        if comparison_type == "types" and sample_type == "biased":
-            pos_x = 0.97
-            pos_y = 0.47
-        plt.text(pos_x, pos_y, r"\textbf{"+label+"}", transform=plt.gca().transAxes, fontsize=25,
-                 verticalalignment='top', horizontalalignment='right')
+def addSecondaryLabel(label, pos_x=0.05, pos_y=0.95, v_align='top', h_align='left'):
+    plt.text(pos_x, pos_y, r"\textbf{"+label+"}", transform=plt.gca().transAxes, fontsize=25,
+             verticalalignment=v_align, horizontalalignment=h_align)
 
 def addPrimaryLabel():
     plt.text(1, 1.06 , r"\textbf{HGCAL} \textit{Preliminary}", transform=plt.gca().transAxes, fontsize=25,
@@ -117,25 +122,23 @@ def plotGraphs(np_graph_dict, sample_type,comparison_type):
         if not comparisonTypePass(sample, comparison_type): continue
         x = data["x"]
         y = data["y"]
-        ex = data["ex"]
         ey = data["ey"]
         if max(x) > 100: continue #hardcoded for now
         #if sample_type == "floating" and max(x) != 100: continue
         if "(rep.)" in sLV.sample_tags[sample]["tag"]: continue
         color, marker = getColorAndMarker(sample)
-        plt.errorbar(x, y, xerr=ex, yerr=ey, label=sLV.sample_tags[sample]["tag"], color=color, marker=marker)
+        plt.errorbar(x, y, xerr=None, yerr=ey if sample_type == "GCD" else None, label=sLV.sample_tags[sample]["tag"], color=color, marker=marker)
     plt.xlabel("Dose [kGy]")
     plt.ylabel("Surface velocity [cm/s]" if sample_type == "GCD" else "Oxide charge density [cm$^{-2}$]")
-    plt.legend()
+    plt.legend(handlelength=1.5, loc = 'lower right')
     plt.xscale("log")
     plt.grid(which='both', linestyle='--', linewidth=0.5)
     if sample_type == "GCD":
         plt.yscale("log")
     plt.xlim(left=1)
     addPrimaryLabel()
-    label = 'Floating MOS' if sample_type == "floating" else 'Biased MOS [+10V]'
-    if sample_type == "GCD": label = 'Floating GCD'
-    addSecondaryLabel(label, comparison_type, sample_type)
+    label = getPlotLabel(sample_type)
+    addSecondaryLabel(label)
     plt.savefig(os.path.join(out_dir, f"comparison_LabView_{sample_type}_{comparison_type}.pdf"))
     plt.savefig(os.path.join(out_dir, f"comparison_LabView_{sample_type}_{comparison_type}.png"))
     plt.clf()

@@ -9,9 +9,13 @@ plt.rcParams["text.usetex"] = True
 from utility import safeOpenFile, safeGetObject
 import sampleStyle as sAXIOM
 
-from doPlots import TGraphToNumpy
+from doPlots import TGraphToNumpy, addPrimaryLabel, addSecondaryLabel, getPlotLabel
 
 sample_types = {'floating' : 'MOShalf',
+                'biased' : 'MOS2000',
+                'GCD' :'GCD',}
+
+sample_types_tags = {'floating' : 'MOShalf',
                 'biased' : 'MOS2000',
                 'GCD' :'GCD',}
 
@@ -22,6 +26,11 @@ os.makedirs(out_dir, exist_ok=True)
 comparison_types = ['types', 'materials', 'all']
 
 all_plots_dict = {sample_type: {} for sample_type in sample_types.keys()}
+
+
+def addAXIOMlabel(pos_x=0.05, pos_y=0.87, v_align='top', h_align='left'):
+    plt.text(pos_x, pos_y, r"\textit{AXIOM} setup", transform=plt.gca().transAxes, fontsize=25,
+             verticalalignment=v_align, horizontalalignment=h_align)
 
 def readAllGraphsFromFile(sample):
     path = os.path.join(indir, f"summaryVsDose_{sample}.root")
@@ -61,9 +70,9 @@ def comparisonTypePass(sample, comparison_type):
 def plotGraphsType(sample_type, comparison_type):
     for sample, data in all_plots_dict[sample_type].items():
         
-        legend = sAXIOM.getSampleAttribute(sample, "leg").replace('#', 'n')
-        if 'kGy' in legend: continue
-        if 'n2' in legend: continue
+        tag = sAXIOM.getSampleAttribute(sample, "leg").replace('#', 'n')
+        if 'kGy' in tag: continue
+        if 'n2' in tag: continue
         if not comparisonTypePass(sample, comparison_type):
             continue
 
@@ -71,17 +80,27 @@ def plotGraphsType(sample_type, comparison_type):
         y = data["y"]
         ex = data["ex"]
         ey = data["ey"]
+        ey = ey if sample_type == "GCD" else np.zeros(len(y))
 
-        plt.errorbar(x, y, xerr=ex, yerr=ey, label=legend)
+        legend = sAXIOM.tag_styles[tag]["new tag"]
+        color, marker = sAXIOM.getColorAndMarker(sample)
+        linestyle = '-' if not 'EPI' in legend else '--'
+        if legend == "New type C FZ (Aug23)":
+            linestyle = '--'
+        plt.errorbar(x, y, xerr=None, yerr= ey if sample_type == "GCD" else None, label=legend, color=color, marker=marker, linestyle = linestyle)
 
     plt.xlabel("Dose [kGy]")
     plt.ylabel("Surface velocity [cm/s]" if sample_type == "GCD" else "Oxide charge density [cm$^{-2}$]")
-    plt.legend()
+    plt.legend(handlelength=1.5, loc = 'lower right')
     plt.xscale("log")
     plt.grid(which='both', linestyle='--', linewidth=0.5)
     if sample_type == "GCD":
         plt.yscale("log")
     plt.xlim(left=1)
+    addPrimaryLabel()
+    plot_label = getPlotLabel(sample_type)
+    addSecondaryLabel(plot_label, h_align='left', pos_x=0.05, pos_y=0.95)
+    addAXIOMlabel()
     plt.savefig(os.path.join(out_dir, f"comparison_{sample_type}_{comparison_type}.pdf"))
     plt.savefig(os.path.join(out_dir, f"comparison_{sample_type}_{comparison_type}.png"))
     plt.clf()
